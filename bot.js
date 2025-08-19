@@ -5,27 +5,26 @@ const express = require('express');
 const app = express();
 
 const PORT = process.env.PORT || 10000;
-
 app.get('/', (req, res) => res.send('Bot is running!'));
 app.listen(PORT, () => {
   console.log(`Listening on port ${PORT}`);
 });
 
+// Telegram Bot
 const token = process.env.BOT_TOKEN;
 if (!token) {
   console.error("Error: BOT_TOKEN not found!");
   process.exit(1);
 }
-
-const bot = new TelegramBot(token, { polling: true, debug: true });
+const bot = new TelegramBot(token, { polling: true });
 console.log("Bot is running...");
 
 // ✅ Your channel ID
 const channelId = -1003010205363;
 
-// --- JSONBin private bin setup ---
-const JSONBIN_ID = process.env.JSONBIN_ID; // just the ID, not full URL
-const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY; // your master key
+// --- Fetch posts from JSONBin ---
+const JSONBIN_ID = process.env.JSONBIN_ID;         // e.g., "your-bin-id"
+const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY; // X-Master-Key
 
 const fetchBlogPosts = async () => {
   try {
@@ -34,7 +33,10 @@ const fetchBlogPosts = async () => {
         'X-Master-Key': JSONBIN_API_KEY
       }
     });
-    return response.data.record; // array of blog posts
+
+    const posts = response.data.record?.posts;
+    if (Array.isArray(posts)) return posts;
+    return [];
   } catch (err) {
     console.error("Error fetching JSONBin:", err.message);
     return [];
@@ -42,15 +44,24 @@ const fetchBlogPosts = async () => {
 };
 
 // --- Format and post to Telegram ---
-const hashtags = "#Marketing #Business #Growth #Tips";
-
 const postBlogPostsToChannel = async () => {
   const posts = await fetchBlogPosts();
   if (!posts || posts.length === 0) return;
 
   for (let post of posts) {
-    const message = `📰 <b>${post.title}</b>\n\n${post.summary}\n\n🔗 ${post.youtubeUrl || ""}\n\n${hashtags}`;
-    bot.sendPhoto(channelId, post.imageUrl, { caption: message, parse_mode: "HTML" });
+    const message = `
+📰 <b>${post.title}</b>
+
+${post.summary}
+
+🔗 ${post.youtubeUrl}
+`;
+    // Send image first if exists
+    if (post.imageUrl) {
+      await bot.sendPhoto(channelId, post.imageUrl, { caption: message, parse_mode: "HTML" });
+    } else {
+      await bot.sendMessage(channelId, message, { parse_mode: "HTML" });
+    }
   }
 };
 
