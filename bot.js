@@ -28,7 +28,7 @@ const channelId = -1003010205363;
 const mainSiteUrl = "https://tieg.run";
 
 // JSONBin endpoint (replace BIN_ID with your bin ID)
-const JSONBIN_URL = "https://api.jsonbin.io/v3/b/YOUR_BIN_ID/latest";
+const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_ID}/latest`;
 
 const fetchBlogPosts = async () => {
   try {
