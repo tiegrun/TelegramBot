@@ -5,6 +5,7 @@ const express = require('express');
 const app = express();
 
 const PORT = process.env.PORT || 10000;
+
 app.get('/', (req, res) => res.send('Bot is running!'));
 app.listen(PORT, () => {
   console.log(`Listening on port ${PORT}`);
@@ -22,42 +23,34 @@ console.log("Bot is running...");
 // ✅ Your channel ID
 const channelId = -1003010205363;
 
-// --- JSONBin.io config ---
-const JSONBIN_ID = process.env.JSONBIN_ID; // your bin ID
-const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY; // optional if private bin
+// --- JSONBin private bin setup ---
+const JSONBIN_ID = process.env.JSONBIN_ID; // just the ID, not full URL
+const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY; // your master key
 
-// --- Fetch blog posts from JSONBin.io ---
-const fetchPosts = async () => {
+const fetchBlogPosts = async () => {
   try {
     const response = await axios.get(`https://api.jsonbin.io/v3/b/${JSONBIN_ID}/latest`, {
-      headers: JSONBIN_API_KEY ? { 'X-Master-Key': JSONBIN_API_KEY } : {},
+      headers: {
+        'X-Master-Key': JSONBIN_API_KEY
+      }
     });
-    return response.data.record; // array of posts
+    return response.data.record; // array of blog posts
   } catch (err) {
     console.error("Error fetching JSONBin:", err.message);
     return [];
   }
 };
 
-// --- Format and post blog posts to Telegram ---
+// --- Format and post to Telegram ---
 const hashtags = "#Marketing #Business #Growth #Tips";
 
-const postPostsToChannel = async () => {
-  const posts = await fetchPosts();
+const postBlogPostsToChannel = async () => {
+  const posts = await fetchBlogPosts();
   if (!posts || posts.length === 0) return;
 
   for (let post of posts) {
-    const message = `
-<b>${post.title}</b>
-
-${post.summary || ""}
-
-${post.youtubeUrl ? "🎥 " + post.youtubeUrl : ""}
-${post.imageUrl ? "🖼️ " + post.imageUrl : ""}
-
-${hashtags}
-    `;
-    bot.sendMessage(channelId, message, { parse_mode: "HTML" });
+    const message = `📰 <b>${post.title}</b>\n\n${post.summary}\n\n🔗 ${post.youtubeUrl || ""}\n\n${hashtags}`;
+    bot.sendPhoto(channelId, post.imageUrl, { caption: message, parse_mode: "HTML" });
   }
 };
 
@@ -70,18 +63,20 @@ const schedulePosts = () => {
 
   scheduleTimes.forEach(time => {
     const [hour, minute] = time.split(":").map(Number);
-    let delay = (hour * 60 + minute - nowMinutes) * 60 * 1000;
-    if (delay < 0) delay += 24 * 60 * 60 * 1000; // next day
+    const timeMinutes = hour * 60 + minute;
+    let delay = (timeMinutes - nowMinutes) * 60 * 1000;
+
+    if (delay < 0) delay += 24 * 60 * 60 * 1000; // schedule for next day if passed
 
     setTimeout(function repeatPost() {
-      postPostsToChannel();
-      setInterval(postPostsToChannel, 24 * 60 * 60 * 1000); // every 24h
+      postBlogPostsToChannel();
+      setInterval(postBlogPostsToChannel, 24 * 60 * 60 * 1000); // repeat every 24h
     }, delay);
   });
 };
 
 // Post immediately on startup
-postPostsToChannel();
+postBlogPostsToChannel();
 
 // Start scheduled posts
 schedulePosts();
