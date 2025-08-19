@@ -48,7 +48,7 @@ const postBlogPostsToChannel = async () => {
   const posts = await fetchBlogPosts();
   if (!posts || posts.length === 0) return;
 
-  // Reverse the posts so newest appear first
+  // Reverse posts so newest appear first
   const reversedPosts = posts.slice().reverse();
 
   for (let post of reversedPosts) {
@@ -56,18 +56,30 @@ const postBlogPostsToChannel = async () => {
 📰 <b>${post.title}</b>
 
 ${post.summary}
-
-🔗 YouTube: ${post.youtubeUrl}
-🌐 Website: https://www.tieg.run/
 `;
-    // Send image first if exists
+
+    const buttons = [
+      [
+        { text: "▶️ Watch on YouTube", url: post.youtubeUrl },
+        { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
+      ]
+    ];
+
     if (post.imageUrl) {
-      await bot.sendPhoto(channelId, post.imageUrl, { caption: message, parse_mode: "HTML" });
+      await bot.sendPhoto(channelId, post.imageUrl, { 
+        caption: message, 
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: buttons }
+      });
     } else {
-      await bot.sendMessage(channelId, message, { parse_mode: "HTML" });
+      await bot.sendMessage(channelId, message, {
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: buttons }
+      });
     }
   }
 };
+
 
 
 // --- Schedule posts 3 times per day ---
