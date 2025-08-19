@@ -2,13 +2,13 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const express = require('express');
-const app = express();
+const fs = require('fs');
+const path = require('path');
 
+const app = express();
 const PORT = process.env.PORT || 10000;
 app.get('/', (req, res) => res.send('Bot is running!'));
-app.listen(PORT, () => {
-  console.log(`Listening on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
 
 // Telegram Bot
 const token = process.env.BOT_TOKEN;
@@ -22,28 +22,34 @@ console.log("Bot is running...");
 // ✅ Your channel ID
 const channelId = -1003010205363;
 
-// --- Fetch posts from JSONBin ---
+// --- JSONBin credentials ---
 const JSONBIN_ID = process.env.JSONBIN_ID;         // e.g., "your-bin-id"
 const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY; // X-Master-Key
 
+// --- File to track sent posts ---
+const sentPostsFile = path.join(__dirname, 'sentPosts.json');
+let sentPosts = [];
+
+// Load previously sent posts
+if (fs.existsSync(sentPostsFile)) {
+  sentPosts = JSON.parse(fs.readFileSync(sentPostsFile, 'utf8'));
+}
+
+// --- Fetch posts from JSONBin ---
 const fetchBlogPosts = async () => {
   try {
     const response = await axios.get(`https://api.jsonbin.io/v3/b/${JSONBIN_ID}/latest`, {
-      headers: {
-        'X-Master-Key': JSONBIN_API_KEY
-      }
+      headers: { 'X-Master-Key': JSONBIN_API_KEY }
     });
-
     const posts = response.data.record?.posts;
-    if (Array.isArray(posts)) return posts;
-    return [];
+    return Array.isArray(posts) ? posts : [];
   } catch (err) {
     console.error("Error fetching JSONBin:", err.message);
     return [];
   }
 };
 
-// --- Format and post to Telegram ---
+// --- Post new posts to Telegram ---
 const postBlogPostsToChannel = async () => {
   const posts = await fetchBlogPosts();
   if (!posts || posts.length === 0) return;
@@ -51,7 +57,11 @@ const postBlogPostsToChannel = async () => {
   // Reverse posts so newest appear first
   const reversedPosts = posts.slice().reverse();
 
-  for (let post of reversedPosts) {
+  // Filter out posts already sent
+  const newPosts = reversedPosts.filter(post => !sentPosts.includes(post.title));
+  if (newPosts.length === 0) return;
+
+  for (let post of newPosts) {
     const message = `
 📰 <b>${post.title}</b>
 
@@ -77,10 +87,14 @@ ${post.summary}
         reply_markup: { inline_keyboard: buttons }
       });
     }
+
+    // Mark post as sent
+    sentPosts.push(post.title);
   }
+
+  // Save sent posts to file
+  fs.writeFileSync(sentPostsFile, JSON.stringify(sentPosts, null, 2));
 };
-
-
 
 // --- Schedule posts 3 times per day ---
 const scheduleTimes = ["08:00", "13:00", "18:00"]; // 24-hour format
@@ -91,14 +105,12 @@ const schedulePosts = () => {
 
   scheduleTimes.forEach(time => {
     const [hour, minute] = time.split(":").map(Number);
-    const timeMinutes = hour * 60 + minute;
-    let delay = (timeMinutes - nowMinutes) * 60 * 1000;
-
-    if (delay < 0) delay += 24 * 60 * 60 * 1000; // schedule for next day if passed
+    let delay = (hour * 60 + minute - nowMinutes) * 60 * 1000;
+    if (delay < 0) delay += 24 * 60 * 60 * 1000;
 
     setTimeout(function repeatPost() {
       postBlogPostsToChannel();
-      setInterval(postBlogPostsToChannel, 24 * 60 * 60 * 1000); // repeat every 24h
+      setInterval(postBlogPostsToChannel, 24 * 60 * 60 * 1000);
     }, delay);
   });
 };
