@@ -5,13 +5,10 @@ const express = require('express');
 const app = express();
 
 const PORT = process.env.PORT || 10000;
-
 app.get('/', (req, res) => res.send('Bot is running!'));
-
 app.listen(PORT, () => {
   console.log(`Listening on port ${PORT}`);
 });
-
 
 const token = process.env.BOT_TOKEN;
 if (!token) {
@@ -25,28 +22,41 @@ console.log("Bot is running...");
 // ✅ Your channel ID
 const channelId = -1003010205363;
 
-// --- Fetch latest marketing/business news ---
-const NEWS_API_KEY = process.env.NEWS_API_KEY;
-const fetchNews = async () => {
+// --- JSONBin.io config ---
+const JSONBIN_ID = process.env.JSONBIN_ID; // your bin ID
+const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY; // optional if private bin
+
+// --- Fetch blog posts from JSONBin.io ---
+const fetchPosts = async () => {
   try {
-    const url = `https://newsapi.org/v2/top-headlines?category=business&language=en&pageSize=5&apiKey=${NEWS_API_KEY}`;
-    const response = await axios.get(url);
-    return response.data.articles; // array of articles
+    const response = await axios.get(`https://api.jsonbin.io/v3/b/${JSONBIN_ID}/latest`, {
+      headers: JSONBIN_API_KEY ? { 'X-Master-Key': JSONBIN_API_KEY } : {},
+    });
+    return response.data.record; // array of posts
   } catch (err) {
-    console.error("Error fetching news:", err.message);
+    console.error("Error fetching JSONBin:", err.message);
     return [];
   }
 };
 
-// --- Format and post news to Telegram ---
+// --- Format and post blog posts to Telegram ---
 const hashtags = "#Marketing #Business #Growth #Tips";
 
-const postNewsToChannel = async () => {
-  const articles = await fetchNews();
-  if (articles.length === 0) return;
+const postPostsToChannel = async () => {
+  const posts = await fetchPosts();
+  if (!posts || posts.length === 0) return;
 
-  for (let article of articles) {
-    const message = `📰 <b>${article.title}</b>\n\n${article.description || ""}\n\n🔗 ${article.url}\n\n${hashtags}`;
+  for (let post of posts) {
+    const message = `
+<b>${post.title}</b>
+
+${post.summary || ""}
+
+${post.youtubeUrl ? "🎥 " + post.youtubeUrl : ""}
+${post.imageUrl ? "🖼️ " + post.imageUrl : ""}
+
+${hashtags}
+    `;
     bot.sendMessage(channelId, message, { parse_mode: "HTML" });
   }
 };
@@ -60,20 +70,18 @@ const schedulePosts = () => {
 
   scheduleTimes.forEach(time => {
     const [hour, minute] = time.split(":").map(Number);
-    const timeMinutes = hour * 60 + minute;
-    let delay = (timeMinutes - nowMinutes) * 60 * 1000;
-
-    if (delay < 0) delay += 24 * 60 * 60 * 1000; // schedule for next day if passed
+    let delay = (hour * 60 + minute - nowMinutes) * 60 * 1000;
+    if (delay < 0) delay += 24 * 60 * 60 * 1000; // next day
 
     setTimeout(function repeatPost() {
-      postNewsToChannel();
-      setInterval(postNewsToChannel, 24 * 60 * 60 * 1000); // repeat every 24h
+      postPostsToChannel();
+      setInterval(postPostsToChannel, 24 * 60 * 60 * 1000); // every 24h
     }, delay);
   });
 };
 
 // Post immediately on startup
-postNewsToChannel();
+postPostsToChannel();
 
 // Start scheduled posts
 schedulePosts();
