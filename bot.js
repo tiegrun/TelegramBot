@@ -28,12 +28,14 @@ const fetchPosts = async () => {
     const res = await axios.get(`https://api.jsonbin.io/v3/b/${process.env.JSONBIN_ID}/latest`, {
       headers: { 'X-Master-Key': process.env.JSONBIN_KEY }
     });
+    console.log("JSONBin response:", res.data);
     return res.data.record.posts || [];
   } catch (err) {
     console.error("Error fetching JSONBin:", err.message);
     return [];
   }
 };
+
 
 // --- Format and post blogs to Telegram ---
 const postBlogPostsToChannel = async () => {
