@@ -7,13 +7,20 @@
     "start": "node bot.js"
   },
   "dependencies": {
+    "axios": "^1.11.0",
     "dotenv": "^17.2.1",
     "node-telegram-bot-api": "^0.61.0"
   },
   "engines": {
     "node": ">=18.0.0"
   },
-  "keywords": ["telegram", "bot", "channel", "news", "marketing"],
+  "keywords": [
+    "telegram",
+    "bot",
+    "channel",
+    "news",
+    "marketing"
+  ],
   "author": "Your Name",
   "license": "MIT"
 }
