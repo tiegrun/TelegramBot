@@ -48,13 +48,17 @@ const postBlogPostsToChannel = async () => {
   const posts = await fetchBlogPosts();
   if (!posts || posts.length === 0) return;
 
-  for (let post of posts) {
+  // Reverse the posts so newest appear first
+  const reversedPosts = posts.slice().reverse();
+
+  for (let post of reversedPosts) {
     const message = `
 📰 <b>${post.title}</b>
 
 ${post.summary}
 
-🔗 ${post.youtubeUrl}
+🔗 YouTube: ${post.youtubeUrl}
+🌐 Website: https://www.tieg.run/
 `;
     // Send image first if exists
     if (post.imageUrl) {
@@ -64,6 +68,7 @@ ${post.summary}
     }
   }
 };
+
 
 // --- Schedule posts 3 times per day ---
 const scheduleTimes = ["08:00", "13:00", "18:00"]; // 24-hour format
