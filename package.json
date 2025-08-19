@@ -1,15 +1,19 @@
 {
-  "name": "telegrambot",
+  "name": "telegram-bot",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Telegram bot that posts to channel and replies to users",
+  "main": "bot.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node bot.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "node-telegram-bot-api": "^0.66.0"
-  }
+    "dotenv": "^17.2.1",
+    "node-telegram-bot-api": "^0.61.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["telegram", "bot", "channel", "news", "marketing"],
+  "author": "Your Name",
+  "license": "MIT"
 }
