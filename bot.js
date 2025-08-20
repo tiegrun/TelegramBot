@@ -22,10 +22,6 @@ console.log("Bot is running...");
 // ✅ Your channel ID
 const channelId = -1003010205363;
 
-// --- JSONBin credentials ---
-const JSONBIN_ID = process.env.JSONBIN_ID;         // e.g., "your-bin-id"
-const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY; // X-Master-Key
-
 // --- File to track sent posts ---
 const sentPostsFile = path.join(__dirname, 'sentPosts.json');
 let sentPosts = [];
@@ -35,16 +31,14 @@ if (fs.existsSync(sentPostsFile)) {
   sentPosts = JSON.parse(fs.readFileSync(sentPostsFile, 'utf8'));
 }
 
-// --- Fetch posts from JSONBin ---
+// --- Fetch posts from JSONKeeper ---
 const fetchBlogPosts = async () => {
   try {
-    const response = await axios.get(`https://api.jsonbin.io/v3/b/${JSONBIN_ID}/latest`, {
-      headers: { 'X-Master-Key': JSONBIN_API_KEY }
-    });
-    const posts = response.data.record?.posts;
+    const response = await axios.get("https://www.jsonkeeper.com/b/0VPTV");
+    const posts = response.data.posts; // expects { "posts": [...] }
     return Array.isArray(posts) ? posts : [];
   } catch (err) {
-    console.error("Error fetching JSONBin:", err.message);
+    console.error("Error fetching JSONKeeper:", err.message);
     return [];
   }
 };
@@ -96,7 +90,7 @@ ${post.summary}
   fs.writeFileSync(sentPostsFile, JSON.stringify(sentPosts, null, 2));
 };
 
-// --- Schedule posts 3 times per day ---
+// --- Schedule posts 3 times per day (optional, still keeps original schedule) ---
 const scheduleTimes = ["08:00", "13:00", "18:00"]; // 24-hour format
 
 const schedulePosts = () => {
@@ -115,8 +109,11 @@ const schedulePosts = () => {
   });
 };
 
+// --- New: Check for new posts every 15 minutes ---
+setInterval(postBlogPostsToChannel, 15 * 60 * 1000);
+
 // Post immediately on startup
 postBlogPostsToChannel();
 
-// Start scheduled posts
+// Start scheduled posts (optional)
 schedulePosts();
