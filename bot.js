@@ -2,7 +2,12 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const fs = require('fs');
-const path = require('path');
+const express = require('express');
+
+const app = express();
+const PORT = process.env.PORT || 10000;
+app.get('/', (req, res) => res.send('Bot is running!'));
+app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
 
 // Telegram Bot
 const token = process.env.BOT_TOKEN;
@@ -16,68 +21,76 @@ console.log("Bot is running...");
 // ✅ Your channel ID
 const channelId = -1003010205363;
 
-// --- File to track last sent post ---
-const lastSentFile = path.join(__dirname, 'lastSent.json');
-let lastSentTitle = null;
+// --- JSONKeeper posts URL ---
+const POSTS_URL = "https://www.jsonkeeper.com/b/0VPTV";
 
-// Load last sent post
-if (fs.existsSync(lastSentFile)) {
-  lastSentTitle = fs.readFileSync(lastSentFile, 'utf8');
+// --- File to store last sent id ---
+const lastIdFile = "lastSentId.json";
+let lastSentId = 0;
+
+// Load last sent id if exists
+if (fs.existsSync(lastIdFile)) {
+  const data = fs.readFileSync(lastIdFile, "utf8");
+  lastSentId = JSON.parse(data).lastId || 0;
 }
 
 // --- Fetch posts from JSONKeeper ---
-const fetchBlogPosts = async () => {
+const fetchPosts = async () => {
   try {
-    const response = await axios.get("https://www.jsonkeeper.com/b/0VPTV");
-    const posts = response.data.posts; // expects { "posts": [...] }
-    return Array.isArray(posts) ? posts : [];
+    const res = await axios.get(POSTS_URL);
+    return Array.isArray(res.data.posts) ? res.data.posts : [];
   } catch (err) {
-    console.error("Error fetching JSONKeeper:", err.message);
+    console.error("Error fetching posts:", err.message);
     return [];
   }
 };
 
-// --- Post newest post to Telegram ---
-const postNewestToChannel = async () => {
-  const posts = await fetchBlogPosts();
+// --- Post new posts ---
+const postNewPosts = async () => {
+  const posts = await fetchPosts();
   if (!posts || posts.length === 0) return;
 
-  // Get the newest post (last in the array if chronological)
-  const newest = posts[posts.length - 1];
+  // Filter posts with id higher than lastSentId
+  const newPosts = posts.filter(post => post.id > lastSentId);
+  if (newPosts.length === 0) return;
 
-  // Skip if already sent
-  if (newest.title === lastSentTitle) return;
+  // Sort ascending so oldest first
+  newPosts.sort((a, b) => a.id - b.id);
 
-  const message = `📰 <b>${newest.title}</b>\n\n${newest.summary}`;
-  const buttons = [
-    [
-      { text: "▶️ Watch on YouTube", url: newest.youtubeUrl },
-      { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
-    ]
-  ];
+  for (let post of newPosts) {
+    const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
+    const buttons = [
+      [
+        { text: "▶️ Watch on YouTube", url: post.youtubeUrl },
+        { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
+      ]
+    ];
 
-  try {
-    if (newest.imageUrl) {
-      await bot.sendPhoto(channelId, newest.imageUrl, { 
-        caption: message, 
-        parse_mode: "HTML",
-        reply_markup: { inline_keyboard: buttons }
-      });
-    } else {
-      await bot.sendMessage(channelId, message, {
-        parse_mode: "HTML",
-        reply_markup: { inline_keyboard: buttons }
-      });
+    try {
+      if (post.imageUrl) {
+        await bot.sendPhoto(channelId, post.imageUrl, {
+          caption: message,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: buttons }
+        });
+      } else {
+        await bot.sendMessage(channelId, message, {
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: buttons }
+        });
+      }
+
+      // Update lastSentId
+      lastSentId = post.id;
+      fs.writeFileSync(lastIdFile, JSON.stringify({ lastId: lastSentId }));
+    } catch (err) {
+      console.error("Error sending message:", err.message);
     }
-
-    // Save as last sent
-    lastSentTitle = newest.title;
-    fs.writeFileSync(lastSentFile, lastSentTitle);
-  } catch (err) {
-    console.error("Error sending message:", err.message);
   }
 };
 
-// --- Continuous checking every 15 minutes ---
-setInterval(postNewestToChannel, 15 * 60 * 1000); // 15 min interval
-postNewestToChannel(); // also post immediately on startup
+// --- Check every 15 minutes ---
+setInterval(postNewPosts, 15 * 60 * 1000);
+
+// Post immediately on startup
+postNewPosts();
