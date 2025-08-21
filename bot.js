@@ -16,20 +16,20 @@ console.log("Bot is running...");
 // ✅ Your channel ID
 const channelId = -1003010205363;
 
-// --- File to track sent posts ---
-const sentPostsFile = path.join(__dirname, 'sentPosts.json');
-let sentPosts = [];
+// --- File to track last sent post ---
+const lastSentFile = path.join(__dirname, 'lastSent.json');
+let lastSentTitle = null;
 
-// Load previously sent posts
-if (fs.existsSync(sentPostsFile)) {
-  sentPosts = JSON.parse(fs.readFileSync(sentPostsFile, 'utf8'));
+// Load last sent post
+if (fs.existsSync(lastSentFile)) {
+  lastSentTitle = fs.readFileSync(lastSentFile, 'utf8');
 }
 
 // --- Fetch posts from JSONKeeper ---
 const fetchBlogPosts = async () => {
   try {
     const response = await axios.get("https://www.jsonkeeper.com/b/0VPTV");
-    const posts = response.data.posts;
+    const posts = response.data.posts; // expects { "posts": [...] }
     return Array.isArray(posts) ? posts : [];
   } catch (err) {
     console.error("Error fetching JSONKeeper:", err.message);
@@ -37,49 +37,47 @@ const fetchBlogPosts = async () => {
   }
 };
 
-// --- Post new posts to Telegram ---
-const postBlogPostsToChannel = async () => {
+// --- Post newest post to Telegram ---
+const postNewestToChannel = async () => {
   const posts = await fetchBlogPosts();
   if (!posts || posts.length === 0) return;
 
-  const newPosts = posts.filter(post => !sentPosts.includes(post.title));
-  if (newPosts.length === 0) return;
+  // Get the newest post (last in the array if chronological)
+  const newest = posts[posts.length - 1];
 
-  for (let post of newPosts) {
-    const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
+  // Skip if already sent
+  if (newest.title === lastSentTitle) return;
 
-    const buttons = [
-      [
-        { text: "▶️ Watch on YouTube", url: post.youtubeUrl },
-        { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
-      ]
-    ];
+  const message = `📰 <b>${newest.title}</b>\n\n${newest.summary}`;
+  const buttons = [
+    [
+      { text: "▶️ Watch on YouTube", url: newest.youtubeUrl },
+      { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
+    ]
+  ];
 
-    try {
-      if (post.imageUrl) {
-        await bot.sendPhoto(channelId, post.imageUrl, { 
-          caption: message, 
-          parse_mode: "HTML",
-          reply_markup: { inline_keyboard: buttons }
-        });
-      } else {
-        await bot.sendMessage(channelId, message, {
-          parse_mode: "HTML",
-          reply_markup: { inline_keyboard: buttons }
-        });
-      }
-
-      // Mark post as sent
-      sentPosts.push(post.title);
-    } catch (err) {
-      console.error("Error sending message:", err.message);
+  try {
+    if (newest.imageUrl) {
+      await bot.sendPhoto(channelId, newest.imageUrl, { 
+        caption: message, 
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: buttons }
+      });
+    } else {
+      await bot.sendMessage(channelId, message, {
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: buttons }
+      });
     }
-  }
 
-  // Save sent posts to file
-  fs.writeFileSync(sentPostsFile, JSON.stringify(sentPosts, null, 2));
+    // Save as last sent
+    lastSentTitle = newest.title;
+    fs.writeFileSync(lastSentFile, lastSentTitle);
+  } catch (err) {
+    console.error("Error sending message:", err.message);
+  }
 };
 
-// --- Continuous checking for new posts ---
-setInterval(postBlogPostsToChannel, 15 * 60 * 1000); // every 15 min
-postBlogPostsToChannel(); // also post immediately on startup
+// --- Continuous checking every 15 minutes ---
+setInterval(postNewestToChannel, 15 * 60 * 1000); // 15 min interval
+postNewestToChannel(); // also post immediately on startup
