@@ -2,14 +2,21 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const fs = require('fs');
+const express = require('express');
 
-// Telegram Bot
+const app = express();
+const PORT = process.env.PORT || 10000;
+app.get('/', (req, res) => res.send('Bot is running!'));
+app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+
+// --- Telegram Bot ---
 const token = process.env.BOT_TOKEN;
 if (!token) {
   console.error("Error: BOT_TOKEN not found!");
   process.exit(1);
 }
-const bot = new TelegramBot(token);
+const bot = new TelegramBot(token, { polling: false }); // polling false for cron
+console.log("Bot is ready");
 
 // ✅ Your channel ID
 const channelId = -1003010205363;
@@ -41,11 +48,11 @@ const fetchPosts = async () => {
 // --- Post new posts ---
 const postNewPosts = async () => {
   const posts = await fetchPosts();
-  if (!posts || posts.length === 0) return console.log("No posts found.");
+  if (!posts || posts.length === 0) return;
 
   // Filter posts with id higher than lastSentId
   const newPosts = posts.filter(post => post.id > lastSentId);
-  if (newPosts.length === 0) return console.log("No new posts to send.");
+  if (newPosts.length === 0) return;
 
   // Sort ascending so oldest first
   newPosts.sort((a, b) => a.id - b.id);
@@ -76,13 +83,17 @@ const postNewPosts = async () => {
       // Update lastSentId
       lastSentId = post.id;
       fs.writeFileSync(lastIdFile, JSON.stringify({ lastId: lastSentId }));
-
-      console.log(`Sent post: ${post.title}`);
     } catch (err) {
       console.error("Error sending message:", err.message);
     }
   }
 };
 
-// --- Run once ---
+// --- Expose endpoint for cron-job.org ---
+app.get('/send', async (req, res) => {
+  await postNewPosts();
+  res.send('Posts checked and sent if new');
+});
+
+// Optional: post immediately on startup
 postNewPosts();
