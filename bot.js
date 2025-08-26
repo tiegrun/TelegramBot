@@ -283,6 +283,32 @@ app.get('/test-json', async (req, res) => {
   }
 });
 
+// Reset endpoint to start fresh (sends all posts)
+app.get('/reset', async (req, res) => {
+  try {
+    console.log("=== RESET: Setting lastSentId to 0 ===");
+    lastSentId = 0;
+    saveLastSentId(0);
+    
+    const result = await postNewPosts();
+    
+    res.json({
+      status: 'reset_complete',
+      message: `Reset successful. ${result.message}`,
+      newPosts: result.newPosts,
+      currentLastId: lastSentId,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error("Error in reset:", err.message);
+    res.status(500).json({
+      status: 'error',
+      message: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
