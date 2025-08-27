@@ -210,27 +210,14 @@ app.get('/send', async (req, res) => {
     console.log("Result:", result);
     
     if (result.success) {
-      res.status(200).json({
-        status: 'success',
-        message: result.message,
-        newPosts: result.newPosts,
-        currentLastId: lastSentId,
-        timestamp: new Date().toISOString()
-      });
+      // Return minimal response for cron-job.org
+      res.status(200).send(`OK:${result.newPosts}`);
     } else {
-      res.status(500).json({
-        status: 'error',
-        message: result.message,
-        timestamp: new Date().toISOString()
-      });
+      res.status(500).send('ERROR');
     }
   } catch (err) {
     console.error("Error in /send endpoint:", err.message);
-    res.status(500).json({
-      status: 'error',
-      message: err.message,
-      timestamp: new Date().toISOString()
-    });
+    res.status(500).send('ERROR');
   }
 });
 
@@ -317,6 +304,7 @@ app.listen(PORT, () => {
   console.log(`Status endpoint: http://localhost:${PORT}/status`);
   console.log(`Check endpoint: http://localhost:${PORT}/check`);
   console.log(`Test JSON endpoint: http://localhost:${PORT}/test-json`);
+  console.log(`Reset endpoint: http://localhost:${PORT}/reset`);
 });
 
 // Optional: Don't post immediately on startup to avoid duplicates
