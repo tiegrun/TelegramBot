@@ -116,29 +116,22 @@ const isValidPost = (post) => {
 // --- Post new posts ---
 const postNewPosts = async () => {
   try {
-    console.log("Starting postNewPosts...");
     const posts = await fetchPosts();
     
     if (!posts || posts.length === 0) {
-      console.log("No posts found");
       return { success: true, message: "No posts found", newPosts: 0 };
     }
 
     // Filter and validate posts
     const validPosts = posts.filter(isValidPost);
-    console.log(`Valid posts: ${validPosts.length}`);
-    
     const newPosts = validPosts.filter(post => post.id > lastSentId);
-    console.log(`New posts (id > ${lastSentId}): ${newPosts.length}`);
     
     if (newPosts.length === 0) {
-      console.log("No new posts to send");
       return { success: true, message: "No new posts", newPosts: 0 };
     }
 
     // Sort ascending so oldest first
     newPosts.sort((a, b) => a.id - b.id);
-    console.log(`Sending ${newPosts.length} new posts...`);
 
     let sentCount = 0;
     for (let post of newPosts) {
@@ -150,8 +143,6 @@ const postNewPosts = async () => {
             { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
           ]
         ];
-
-        console.log(`Sending post ${post.id}: ${post.title}`);
 
         if (post.imageUrl) {
           await bot.sendPhoto(channelId, post.imageUrl, {
@@ -171,8 +162,6 @@ const postNewPosts = async () => {
         saveLastSentId(lastSentId);
         sentCount++;
         
-        console.log(`Successfully sent post ${post.id}`);
-        
         // Add small delay to avoid rate limiting
         if (newPosts.length > 1) {
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -180,7 +169,6 @@ const postNewPosts = async () => {
         
       } catch (err) {
         console.error(`Error sending post ${post.id}:`, err.message);
-        // Don't update lastSentId if sending failed
         throw err; // Re-throw to stop processing more posts
       }
     }
@@ -209,15 +197,27 @@ app.get('/send', async (req, res) => {
     
     console.log("Result:", result);
     
+    // Return minimal response - just HTTP status code
     if (result.success) {
-      // Return minimal response for cron-job.org
-      res.status(200).send(`OK:${result.newPosts}`);
+      res.status(200).end(); // No body at all
     } else {
-      res.status(500).send('ERROR');
+      res.status(500).end(); // No body at all
     }
   } catch (err) {
     console.error("Error in /send endpoint:", err.message);
-    res.status(500).send('ERROR');
+    res.status(500).end(); // No body at all
+  }
+});
+
+// Lightweight cron endpoint with zero output
+app.get('/cron', async (req, res) => {
+  try {
+    await postNewPosts();
+    res.writeHead(200, {'Content-Type': 'text/plain'});
+    res.end('1'); // Single character response
+  } catch (err) {
+    res.writeHead(500, {'Content-Type': 'text/plain'});
+    res.end('0'); // Single character response
   }
 });
 
