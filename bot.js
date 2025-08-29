@@ -7,166 +7,135 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Add middleware for parsing JSON
+// --- Middleware ---
 app.use(express.json());
 
-// Health check endpoint
+// --- Health check endpoint ---
 app.get('/', (req, res) => res.send('Bot is running!'));
 
 // --- Telegram Bot ---
 const token = process.env.BOT_TOKEN;
 if (!token) {
-  console.error("Error: BOT_TOKEN not found!");
+  console.error("❌ Error: BOT_TOKEN not found in .env file!");
   process.exit(1);
 }
 
 const bot = new TelegramBot(token, { polling: false });
-console.log("Bot is ready");
+console.log("✅ Bot is ready!");
 
-// ✅ Your channel ID
+// --- Channel ID ---
 const channelId = -1003010205363;
 
 // --- JSONKeeper posts URL ---
 const POSTS_URL = "https://www.jsonkeeper.com/b/0VPTV";
 
-// --- File to store last sent id ---
+// --- Last sent post ID ---
 const lastIdFile = "lastSentId.json";
 let lastSentId = 0;
 
-// Load last sent id if exists
+// --- Load last sent ID ---
 const loadLastSentId = () => {
   try {
     if (fs.existsSync(lastIdFile)) {
       const data = fs.readFileSync(lastIdFile, "utf8");
       const parsed = JSON.parse(data);
       lastSentId = parsed.lastId || 0;
-      console.log(`Loaded lastSentId: ${lastSentId}`);
+      console.log(`ℹ️ Loaded lastSentId: ${lastSentId}`);
     } else {
-      console.log("No lastSentId file found, starting from 0");
+      console.log("ℹ️ No lastSentId file found, starting from 0");
     }
   } catch (err) {
-    console.error("Error loading lastSentId:", err.message);
+    console.error("⚠️ Error loading lastSentId:", err.message);
     lastSentId = 0;
   }
 };
 
-// Save last sent id
+// --- Save last sent ID ---
 const saveLastSentId = (id) => {
   try {
     fs.writeFileSync(lastIdFile, JSON.stringify({ lastId: id }));
-    console.log(`Saved lastSentId: ${id}`);
+    console.log(`💾 Saved lastSentId: ${id}`);
   } catch (err) {
-    console.error("Error saving lastSentId:", err.message);
+    console.error("⚠️ Error saving lastSentId:", err.message);
   }
 };
 
-// Initialize lastSentId
+// --- Initialize lastSentId ---
 loadLastSentId();
 
 // --- Fetch posts from JSONKeeper ---
 const fetchPosts = async () => {
   try {
-    console.log("Fetching posts from JSONKeeper...");
     const res = await axios.get(POSTS_URL, {
-      timeout: 10000, // 10 second timeout
-      headers: {
-        'User-Agent': 'TelegramBot/1.0'
-      }
+      timeout: 10000,
+      headers: { 'User-Agent': 'TelegramBot/1.0' }
     });
-    
-    console.log("Response received:", res.status);
-    
-    if (!res.data) {
-      console.log("No data in response");
-      return [];
-    }
-    
-    // Handle your specific JSON structure: { "posts": [...] }
+
+    if (!res.data) return [];
+
     let posts = [];
     if (Array.isArray(res.data)) {
       posts = res.data;
     } else if (res.data.posts && Array.isArray(res.data.posts)) {
       posts = res.data.posts;
     } else {
-      console.log("Unexpected data structure:", typeof res.data);
       return [];
     }
-    
-    console.log(`Found ${posts.length} total posts`);
+
     return posts;
   } catch (err) {
-    console.error("Error fetching posts:", err.message);
-    if (err.response) {
-      console.error("Response status:", err.response.status);
-      console.error("Response data:", err.response.data);
-    }
+    console.error("⚠️ Error fetching posts:", err.message);
     return [];
   }
 };
 
-// --- Silent fetch posts (no console output) ---
+// --- Silent fetch posts ---
 const fetchPostsSilent = async () => {
   try {
-    const res = await axios.get(POSTS_URL, {
-      timeout: 10000,
-      headers: { 'User-Agent': 'TelegramBot/1.0' }
-    });
-    
+    const res = await axios.get(POSTS_URL, { timeout: 10000 });
     if (!res.data) return [];
-    
-    let posts = [];
-    if (Array.isArray(res.data)) {
-      posts = res.data;
-    } else if (res.data.posts && Array.isArray(res.data.posts)) {
-      posts = res.data.posts;
-    }
-    
-    return posts;
-  } catch (err) {
+    return Array.isArray(res.data) ? res.data : (res.data.posts || []);
+  } catch {
     return [];
   }
 };
 
-// --- Validate post data ---
+// --- Validate post ---
 const isValidPost = (post) => {
-  return post && 
-         post.id && 
-         typeof post.id === 'number' && 
-         post.title && 
-         post.summary;
+  return (
+    post &&
+    typeof post.id === "number" &&
+    post.title &&
+    post.summary
+  );
 };
 
 // --- Post new posts ---
 const postNewPosts = async () => {
   try {
     const posts = await fetchPosts();
-    
-    if (!posts || posts.length === 0) {
+    if (!posts.length) {
       return { success: true, message: "No posts found", newPosts: 0 };
     }
 
-    // Filter and validate posts
     const validPosts = posts.filter(isValidPost);
-    const newPosts = validPosts.filter(post => post.id > lastSentId);
-    
-    if (newPosts.length === 0) {
+    const newPosts = validPosts.filter(p => p.id > lastSentId);
+
+    if (!newPosts.length) {
       return { success: true, message: "No new posts", newPosts: 0 };
     }
 
-    // Sort ascending so oldest first
     newPosts.sort((a, b) => a.id - b.id);
 
     let sentCount = 0;
     for (let post of newPosts) {
-      try {
-        const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
-        const buttons = [
-          [
-            { text: "▶️ Watch on YouTube", url: post.youtubeUrl || "https://www.youtube.com" },
-            { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
-          ]
-        ];
+      const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
+      const buttons = [[
+        { text: "▶️ Watch on YouTube", url: post.youtubeUrl || "https://www.youtube.com" },
+        { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
+      ]];
 
+      try {
         if (post.imageUrl) {
           await bot.sendPhoto(channelId, post.imageUrl, {
             caption: message,
@@ -180,58 +149,44 @@ const postNewPosts = async () => {
           });
         }
 
-        // Update lastSentId after successful send
         lastSentId = post.id;
         saveLastSentId(lastSentId);
         sentCount++;
-        
-        // Add small delay to avoid rate limiting
+
         if (newPosts.length > 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(res => setTimeout(res, 1000));
         }
-        
       } catch (err) {
-        console.error(`Error sending post ${post.id}:`, err.message);
-        throw err; // Re-throw to stop processing more posts
+        console.error(`⚠️ Error sending post ${post.id}:`, err.message);
+        throw err;
       }
     }
-    
-    return { 
-      success: true, 
-      message: `Successfully sent ${sentCount} posts`, 
-      newPosts: sentCount 
-    };
-    
+
+    return { success: true, message: `Sent ${sentCount} posts`, newPosts: sentCount };
   } catch (err) {
-    console.error("Error in postNewPosts:", err.message);
-    return { 
-      success: false, 
-      message: err.message, 
-      newPosts: 0 
-    };
+    return { success: false, message: err.message, newPosts: 0 };
   }
 };
 
-// --- Silent post new posts (no console output) ---
+// --- Silent post new posts ---
 const postNewPostsSilent = async () => {
   try {
     const posts = await fetchPostsSilent();
-    if (!posts || posts.length === 0) return;
-
     const validPosts = posts.filter(isValidPost);
-    const newPosts = validPosts.filter(post => post.id > lastSentId);
-    if (newPosts.length === 0) return;
+    const newPosts = validPosts.filter(p => p.id > lastSentId);
+
+    if (!newPosts.length) return;
 
     newPosts.sort((a, b) => a.id - b.id);
 
     for (let post of newPosts) {
-      try {
-        const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
-        const buttons = [[
-          { text: "▶️ Watch on YouTube", url: post.youtubeUrl || "https://www.youtube.com" },
-          { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
-        ]];
+      const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
+      const buttons = [[
+        { text: "▶️ Watch on YouTube", url: post.youtubeUrl || "https://www.youtube.com" },
+        { text: "🌐 Visit Website", url: "https://www.tieg.run/#blog" }
+      ]];
 
+      try {
         if (post.imageUrl) {
           await bot.sendPhoto(channelId, post.imageUrl, {
             caption: message,
@@ -246,120 +201,83 @@ const postNewPostsSilent = async () => {
         }
 
         lastSentId = post.id;
-        fs.writeFileSync(lastIdFile, JSON.stringify({ lastId: lastSentId }));
-        
+        saveLastSentId(lastSentId);
+
         if (newPosts.length > 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(res => setTimeout(res, 1000));
         }
-      } catch (err) {
-        throw err;
+      } catch {
+        return;
       }
     }
-  } catch (err) {
-    // Silent error handling
+  } catch {
+    return;
   }
 };
 
-// --- COMPLETELY SILENT ENDPOINT FOR CRON-JOB.ORG ---
+// --- Endpoints ---
 app.get('/silent', async (req, res) => {
-  // Completely disable all output
-  const originalLog = console.log;
-  const originalError = console.error;
-  const originalWarn = console.warn;
-  
   console.log = () => {};
   console.error = () => {};
   console.warn = () => {};
-  
+
   try {
     await postNewPostsSilent();
-    res.writeHead(200);
-    res.end(); // No response body at all
-  } catch (err) {
-    res.writeHead(500);
-    res.end(); // No response body at all
-  } finally {
-    // Restore console functions
-    console.log = originalLog;
-    console.error = originalError;
-    console.warn = originalWarn;
+    res.sendStatus(200);
+  } catch {
+    res.sendStatus(500);
   }
 });
 
-// --- Expose endpoint for cron-job.org ---
 app.get('/send', async (req, res) => {
-  try {
-    console.log("=== Cron job triggered ===");
-    const result = await postNewPosts();
-    
-    console.log("Result:", result);
-    
-    // Return minimal response - just HTTP status code
-    if (result.success) {
-      res.status(200).end(); // No body at all
-    } else {
-      res.status(500).end(); // No body at all
-    }
-  } catch (err) {
-    console.error("Error in /send endpoint:", err.message);
-    res.status(500).end(); // No body at all
-  }
+  const result = await postNewPosts();
+  res.sendStatus(result.success ? 200 : 500);
 });
 
-// Lightweight cron endpoint with zero output
 app.get('/cron', async (req, res) => {
   try {
     await postNewPosts();
-    res.writeHead(200, {'Content-Type': 'text/plain'});
-    res.end('1'); // Single character response
-  } catch (err) {
-    res.writeHead(500, {'Content-Type': 'text/plain'});
-    res.end('0'); // Single character response
+    res.status(200).send("1");
+  } catch {
+    res.status(500).send("0");
   }
 });
 
-// Add status endpoint for debugging
 app.get('/status', (req, res) => {
   res.json({
-    status: 'running',
-    lastSentId: lastSentId,
-    timestamp: new Date().toISOString(),
-    channelId: channelId
+    status: "running",
+    lastSentId,
+    channelId,
+    timestamp: new Date().toISOString()
   });
 });
 
-// Test endpoint to check posts without sending
 app.get('/check', async (req, res) => {
   try {
     const posts = await fetchPosts();
     const validPosts = posts.filter(isValidPost);
-    const newPosts = validPosts.filter(post => post.id > lastSentId);
-    
+    const newPosts = validPosts.filter(p => p.id > lastSentId);
+
     res.json({
       totalPosts: posts.length,
       validPosts: validPosts.length,
       newPosts: newPosts.length,
-      lastSentId: lastSentId,
-      newPostIds: newPosts.map(p => p.id).sort(),
+      lastSentId,
+      newPostIds: newPosts.map(p => p.id),
       timestamp: new Date().toISOString()
     });
   } catch (err) {
-    res.status(500).json({
-      error: err.message,
-      timestamp: new Date().toISOString()
-    });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Add a test endpoint to see your JSON structure
 app.get('/test-json', async (req, res) => {
   try {
     const response = await axios.get(POSTS_URL);
     res.json({
-      status: 'success',
-      dataType: typeof response.data,
+      status: "success",
       isArray: Array.isArray(response.data),
-      hasPostsProperty: response.data.posts !== undefined,
+      hasPostsProperty: !!response.data.posts,
       sampleData: response.data
     });
   } catch (err) {
@@ -367,43 +285,20 @@ app.get('/test-json', async (req, res) => {
   }
 });
 
-// Reset endpoint to start fresh (sends all posts)
 app.get('/reset', async (req, res) => {
-  try {
-    console.log("=== RESET: Setting lastSentId to 0 ===");
-    lastSentId = 0;
-    saveLastSentId(0);
-    
-    const result = await postNewPosts();
-    
-    res.json({
-      status: 'reset_complete',
-      message: `Reset successful. ${result.message}`,
-      newPosts: result.newPosts,
-      currentLastId: lastSentId,
-      timestamp: new Date().toISOString()
-    });
-  } catch (err) {
-    console.error("Error in reset:", err.message);
-    res.status(500).json({
-      status: 'error',
-      message: err.message,
-      timestamp: new Date().toISOString()
-    });
-  }
+  lastSentId = 0;
+  saveLastSentId(0);
+  const result = await postNewPosts();
+
+  res.json({
+    status: "reset_complete",
+    message: result.message,
+    newPosts: result.newPosts,
+    currentLastId: lastSentId
+  });
 });
 
-// Start server
+// --- Start server ---
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/`);
-  console.log(`Send endpoint: http://localhost:${PORT}/send`);
-  console.log(`Silent endpoint: http://localhost:${PORT}/silent`);
-  console.log(`Status endpoint: http://localhost:${PORT}/status`);
-  console.log(`Check endpoint: http://localhost:${PORT}/check`);
-  console.log(`Test JSON endpoint: http://localhost:${PORT}/test-json`);
-  console.log(`Reset endpoint: http://localhost:${PORT}/reset`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
-
-// Optional: Don't post immediately on startup to avoid duplicates
-// postNewPosts();
