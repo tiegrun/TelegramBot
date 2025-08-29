@@ -104,6 +104,29 @@ const fetchPosts = async () => {
   }
 };
 
+// --- Silent fetch posts (no console output) ---
+const fetchPostsSilent = async () => {
+  try {
+    const res = await axios.get(POSTS_URL, {
+      timeout: 10000,
+      headers: { 'User-Agent': 'TelegramBot/1.0' }
+    });
+    
+    if (!res.data) return [];
+    
+    let posts = [];
+    if (Array.isArray(res.data)) {
+      posts = res.data;
+    } else if (res.data.posts && Array.isArray(res.data.posts)) {
+      posts = res.data.posts;
+    }
+    
+    return posts;
+  } catch (err) {
+    return [];
+  }
+};
+
 // --- Validate post data ---
 const isValidPost = (post) => {
   return post && 
@@ -188,6 +211,80 @@ const postNewPosts = async () => {
     };
   }
 };
+
+// --- Silent post new posts (no console output) ---
+const postNewPostsSilent = async () => {
+  try {
+    const posts = await fetchPostsSilent();
+    if (!posts || posts.length === 0) return;
+
+    const validPosts = posts.filter(isValidPost);
+    const newPosts = validPosts.filter(post => post.id > lastSentId);
+    if (newPosts.length === 0) return;
+
+    newPosts.sort((a, b) => a.id - b.id);
+
+    for (let post of newPosts) {
+      try {
+        const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
+        const buttons = [[
+          { text: "▶️ Watch on YouTube", url: post.youtubeUrl || "https://www.youtube.com" },
+          { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
+        ]];
+
+        if (post.imageUrl) {
+          await bot.sendPhoto(channelId, post.imageUrl, {
+            caption: message,
+            parse_mode: "HTML",
+            reply_markup: { inline_keyboard: buttons }
+          });
+        } else {
+          await bot.sendMessage(channelId, message, {
+            parse_mode: "HTML",
+            reply_markup: { inline_keyboard: buttons }
+          });
+        }
+
+        lastSentId = post.id;
+        fs.writeFileSync(lastIdFile, JSON.stringify({ lastId: lastSentId }));
+        
+        if (newPosts.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (err) {
+        throw err;
+      }
+    }
+  } catch (err) {
+    // Silent error handling
+  }
+};
+
+// --- COMPLETELY SILENT ENDPOINT FOR CRON-JOB.ORG ---
+app.get('/silent', async (req, res) => {
+  // Completely disable all output
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  
+  console.log = () => {};
+  console.error = () => {};
+  console.warn = () => {};
+  
+  try {
+    await postNewPostsSilent();
+    res.writeHead(200);
+    res.end(); // No response body at all
+  } catch (err) {
+    res.writeHead(500);
+    res.end(); // No response body at all
+  } finally {
+    // Restore console functions
+    console.log = originalLog;
+    console.error = originalError;
+    console.warn = originalWarn;
+  }
+});
 
 // --- Expose endpoint for cron-job.org ---
 app.get('/send', async (req, res) => {
@@ -301,6 +398,7 @@ app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/`);
   console.log(`Send endpoint: http://localhost:${PORT}/send`);
+  console.log(`Silent endpoint: http://localhost:${PORT}/silent`);
   console.log(`Status endpoint: http://localhost:${PORT}/status`);
   console.log(`Check endpoint: http://localhost:${PORT}/check`);
   console.log(`Test JSON endpoint: http://localhost:${PORT}/test-json`);
