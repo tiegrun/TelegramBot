@@ -132,7 +132,7 @@ const postNewPosts = async () => {
       const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
       const buttons = [[
         { text: "▶️ Watch on YouTube", url: post.youtubeUrl || "https://www.youtube.com" },
-        { text: "🌐 Visit Website", url: "https://www.tieg.run/#blog" }
+        { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
       ]];
 
       try {
@@ -184,7 +184,7 @@ const postNewPostsSilent = async () => {
       const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
       const buttons = [[
         { text: "▶️ Watch on YouTube", url: post.youtubeUrl || "https://www.youtube.com" },
-        { text: "🌐 Visit Website", url: "https://www.tieg.run/#blog" }
+        { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
       ]];
 
       try {
@@ -261,7 +261,7 @@ app.get('/silent-minimal', async (req, res) => {
         const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
         const buttons = [[
           { text: "▶️ Watch on YouTube", url: post.youtubeUrl || "https://www.youtube.com" },
-          { text: "🌐 Visit Website", url: "https://www.tieg.run/#blog" }
+          { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
         ]];
 
         if (post.imageUrl) {
