@@ -132,7 +132,7 @@ const postNewPosts = async () => {
       const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
       const buttons = [[
         { text: "▶️ Watch on YouTube", url: post.youtubeUrl || "https://www.youtube.com" },
-        { text: "🌐 Visit Website", url: "https://www.tieg.run/" }
+        { text: "🌐 Visit Website", url: "https://www.tieg.run/#blog" }
       ]];
 
       try {
@@ -168,18 +168,19 @@ const postNewPosts = async () => {
   }
 };
 
-// --- Silent post new posts ---
+// --- FIXED: Silent post new posts ---
 const postNewPostsSilent = async () => {
   try {
     const posts = await fetchPostsSilent();
     const validPosts = posts.filter(isValidPost);
     const newPosts = validPosts.filter(p => p.id > lastSentId);
 
-    if (!newPosts.length) return;
+    if (!newPosts.length) return { success: true, count: 0 };
 
-    newPosts.sort((a, b) => a.id - b.id);
+    // Limit to 5 posts max to prevent overwhelming output
+    const limitedPosts = newPosts.sort((a, b) => a.id - b.id).slice(0, 5);
 
-    for (let post of newPosts) {
+    for (let post of limitedPosts) {
       const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
       const buttons = [[
         { text: "▶️ Watch on YouTube", url: post.youtubeUrl || "https://www.youtube.com" },
@@ -203,29 +204,87 @@ const postNewPostsSilent = async () => {
         lastSentId = post.id;
         saveLastSentId(lastSentId);
 
-        if (newPosts.length > 1) {
+        if (limitedPosts.length > 1) {
           await new Promise(res => setTimeout(res, 1000));
         }
-      } catch {
-        return;
+      } catch (err) {
+        // Return error but don't throw to avoid cascading failures
+        return { success: false, error: err.message };
       }
     }
-  } catch {
-    return;
+
+    return { success: true, count: limitedPosts.length };
+  } catch (err) {
+    return { success: false, error: err.message };
   }
 };
 
 // --- Endpoints ---
+
+// FIXED: Silent endpoint with proper logging control
 app.get('/silent', async (req, res) => {
-  console.log = () => {};
-  console.error = () => {};
-  console.warn = () => {};
+  // Store original console methods
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalWarn = console.warn;
 
   try {
-    await postNewPostsSilent();
-    res.sendStatus(200);
+    // Temporarily disable logging for this request only
+    console.log = () => {};
+    console.error = () => {};
+    console.warn = () => {};
+
+    const result = await postNewPostsSilent();
+    
+    // Send minimal response - just status code, no body
+    res.status(result.success ? 200 : 500).end();
+  } catch (err) {
+    res.status(500).end();
+  } finally {
+    // CRITICAL: Restore original console methods
+    console.log = originalLog;
+    console.error = originalError;
+    console.warn = originalWarn;
+  }
+});
+
+// Alternative ultra-minimal silent endpoint
+app.get('/silent-minimal', async (req, res) => {
+  try {
+    // Ultra-minimal approach - no logging override needed
+    const posts = await axios.get(POSTS_URL, { timeout: 5000 }).then(r => r.data).catch(() => []);
+    const validPosts = (Array.isArray(posts) ? posts : (posts.posts || [])).filter(isValidPost);
+    const newPosts = validPosts.filter(p => p.id > lastSentId).slice(0, 3); // Max 3 posts
+
+    for (let post of newPosts) {
+      try {
+        const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
+        const buttons = [[
+          { text: "▶️ Watch on YouTube", url: post.youtubeUrl || "https://www.youtube.com" },
+          { text: "🌐 Visit Website", url: "https://www.tieg.run/#blog" }
+        ]];
+
+        if (post.imageUrl) {
+          await bot.sendPhoto(channelId, post.imageUrl, {
+            caption: message, parse_mode: "HTML", reply_markup: { inline_keyboard: buttons }
+          });
+        } else {
+          await bot.sendMessage(channelId, message, {
+            parse_mode: "HTML", reply_markup: { inline_keyboard: buttons }
+          });
+        }
+
+        lastSentId = post.id;
+        saveLastSentId(lastSentId);
+        await new Promise(res => setTimeout(res, 1000));
+      } catch {
+        break; // Stop on first error
+      }
+    }
+    
+    res.end(); // Absolutely minimal response
   } catch {
-    res.sendStatus(500);
+    res.status(500).end();
   }
 });
 
