@@ -18,7 +18,7 @@ if (!token) {
   process.exit(1);
 }
 
-// ✅ Prevent multiple bot initializations
+// ✅ Prevent multiple initializations
 if (!global.botInstance) {
   global.botInstance = new TelegramBot(token, { polling: false });
   console.log("🤖 Bot initialized once");
@@ -31,29 +31,24 @@ const channelId = -1003010205363;
 // --- Posts source ---
 const POSTS_URL = "https://www.jsonkeeper.com/b/0VPTV";
 
-// --- Last sent post id persistence ---
+// --- Last sent post persistence ---
 const lastIdFile = "lastSentId.json";
 let lastSentId = 0;
 
 const loadLastSentId = () => {
   try {
     if (fs.existsSync(lastIdFile)) {
-      const data = fs.readFileSync(lastIdFile, "utf8");
-      const parsed = JSON.parse(data);
+      const parsed = JSON.parse(fs.readFileSync(lastIdFile, "utf8"));
       lastSentId = parsed.lastId || 0;
-      console.log(`ℹ️ Loaded lastSentId: ${lastSentId}`);
     }
-  } catch (err) {
-    console.error("⚠️ Could not load lastSentId:", err.message);
+  } catch {
+    lastSentId = 0;
   }
 };
 const saveLastSentId = (id) => {
   try {
     fs.writeFileSync(lastIdFile, JSON.stringify({ lastId: id }));
-    console.log(`💾 Saved lastSentId: ${id}`);
-  } catch (err) {
-    console.error("⚠️ Could not save lastSentId:", err.message);
-  }
+  } catch {}
 };
 loadLastSentId();
 
@@ -67,8 +62,7 @@ const fetchPosts = async () => {
       : res.data.posts && Array.isArray(res.data.posts)
       ? res.data.posts
       : [];
-  } catch (err) {
-    console.error("⚠️ Error fetching posts:", err.message);
+  } catch {
     return [];
   }
 };
@@ -77,19 +71,16 @@ const fetchPosts = async () => {
 const isValidPost = (post) =>
   post && typeof post.id === "number" && post.title && post.summary;
 
-// --- Post new posts ---
+// --- Post new posts (with logging) ---
 const postNewPosts = async () => {
   try {
     const posts = await fetchPosts();
-    const validPosts = posts.filter(isValidPost);
-    const newPosts = validPosts.filter((p) => p.id > lastSentId);
-
+    const newPosts = posts.filter(isValidPost).filter((p) => p.id > lastSentId);
     if (!newPosts.length) return { success: true, message: "No new posts" };
 
-    // Sort oldest → newest
     newPosts.sort((a, b) => a.id - b.id);
-
     let sentCount = 0;
+
     for (let post of newPosts) {
       try {
         const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
@@ -100,26 +91,19 @@ const postNewPosts = async () => {
 
         if (post.imageUrl) {
           await bot.sendPhoto(channelId, post.imageUrl, {
-            caption: message,
-            parse_mode: "HTML",
-            reply_markup: { inline_keyboard: buttons },
+            caption: message, parse_mode: "HTML", reply_markup: { inline_keyboard: buttons },
           });
         } else {
           await bot.sendMessage(channelId, message, {
-            parse_mode: "HTML",
-            reply_markup: { inline_keyboard: buttons },
+            parse_mode: "HTML", reply_markup: { inline_keyboard: buttons },
           });
         }
 
-        // ✅ Save lastSentId immediately after success
         lastSentId = post.id;
         saveLastSentId(lastSentId);
         sentCount++;
-
-        await new Promise((r) => setTimeout(r, 1000)); // avoid spam
-      } catch (err) {
-        console.error(`⚠️ Could not send post ${post.id}:`, err.message);
-      }
+        await new Promise((r) => setTimeout(r, 1000));
+      } catch {}
     }
     return { success: true, message: `Sent ${sentCount} new posts` };
   } catch (err) {
@@ -127,12 +111,11 @@ const postNewPosts = async () => {
   }
 };
 
-// --- Silent post ---
+// --- Silent post (minimal logs) ---
 const postNewPostsSilent = async () => {
   try {
     const posts = await fetchPosts();
-    const validPosts = posts.filter(isValidPost);
-    const newPosts = validPosts.filter((p) => p.id > lastSentId);
+    const newPosts = posts.filter(isValidPost).filter((p) => p.id > lastSentId);
     if (!newPosts.length) return;
 
     newPosts.sort((a, b) => a.id - b.id);
@@ -167,15 +150,15 @@ const postNewPostsSilent = async () => {
 app.get("/silent", async (req, res) => {
   try {
     await postNewPostsSilent();
-    res.status(200).end();
+    res.sendStatus(200); // ✅ no body, minimal logs
   } catch {
-    res.status(500).end();
+    res.sendStatus(500);
   }
 });
 
 app.get("/send", async (req, res) => {
   const result = await postNewPosts();
-  res.sendStatus(result.success ? 200 : 500);
+  res.json(result); // for manual debugging
 });
 
 app.get("/status", (req, res) => {
@@ -197,5 +180,5 @@ app.get("/reset", async (req, res) => {
 // --- Start server ---
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`➡️ Silent endpoint: /silent`);
+  console.log(`➡️ Silent endpoint ready: /silent`);
 });
