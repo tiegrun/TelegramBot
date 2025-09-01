@@ -147,8 +147,14 @@ const postNewPostsSilent = async () => {
 };
 
 // --- Endpoints ---
-app.get("/silent", (req, res) => {
-  res.status(200).send("OK"); // keep it tiny
+app.get("/silent", async (req, res) => {
+  try {
+    console.log("Silent cron ping received"); // only logs in console
+    res.status(200).send("OK"); // keep response tiny
+  } catch (error) {
+    console.error("Error in /silent:", error);
+    res.status(500).send("ERROR");
+  }
 });
 
 app.get("/send", async (req, res) => {
