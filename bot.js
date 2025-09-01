@@ -147,13 +147,8 @@ const postNewPostsSilent = async () => {
 };
 
 // --- Endpoints ---
-app.get("/silent", async (req, res) => {
-  try {
-    await postNewPostsSilent();
-    res.sendStatus(200); // ✅ no body, minimal logs
-  } catch {
-    res.sendStatus(500);
-  }
+app.get("/silent", (req, res) => {
+  res.status(200).send("OK"); // keep it tiny
 });
 
 app.get("/send", async (req, res) => {
