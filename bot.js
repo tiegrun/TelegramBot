@@ -45,11 +45,13 @@ const loadLastSentId = () => {
     lastSentId = 0;
   }
 };
+
 const saveLastSentId = (id) => {
   try {
     fs.writeFileSync(lastIdFile, JSON.stringify({ lastId: id }));
   } catch {}
 };
+
 loadLastSentId();
 
 // --- Fetch posts ---
@@ -71,47 +73,7 @@ const fetchPosts = async () => {
 const isValidPost = (post) =>
   post && typeof post.id === "number" && post.title && post.summary;
 
-// --- Post new posts (with logging) ---
-const postNewPosts = async () => {
-  try {
-    const posts = await fetchPosts();
-    const newPosts = posts.filter(isValidPost).filter((p) => p.id > lastSentId);
-    if (!newPosts.length) return { success: true, message: "No new posts" };
-
-    newPosts.sort((a, b) => a.id - b.id);
-    let sentCount = 0;
-
-    for (let post of newPosts) {
-      try {
-        const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
-        const buttons = [[
-          { text: "▶️ YouTube", url: post.youtubeUrl || "https://youtube.com" },
-          { text: "🌐 Website", url: "https://www.tieg.run/" }
-        ]];
-
-        if (post.imageUrl) {
-          await bot.sendPhoto(channelId, post.imageUrl, {
-            caption: message, parse_mode: "HTML", reply_markup: { inline_keyboard: buttons },
-          });
-        } else {
-          await bot.sendMessage(channelId, message, {
-            parse_mode: "HTML", reply_markup: { inline_keyboard: buttons },
-          });
-        }
-
-        lastSentId = post.id;
-        saveLastSentId(lastSentId);
-        sentCount++;
-        await new Promise((r) => setTimeout(r, 1000));
-      } catch {}
-    }
-    return { success: true, message: `Sent ${sentCount} new posts` };
-  } catch (err) {
-    return { success: false, message: err.message };
-  }
-};
-
-// --- Silent post (minimal logs) ---
+// --- Post new posts (silent, minimal logs) ---
 const postNewPostsSilent = async () => {
   try {
     const posts = await fetchPosts();
@@ -140,26 +102,25 @@ const postNewPostsSilent = async () => {
 
         lastSentId = post.id;
         saveLastSentId(lastSentId);
-        await new Promise((r) => setTimeout(r, 1000));
+        await new Promise(r => setTimeout(r, 1000));
       } catch {}
     }
   } catch {}
 };
 
-// --- Endpoints ---
-// ✅ Always return small "OK" to cron-job.org, run logic in background
-app.get("/silent", async (req, res) => {
-  res.status(200).send("OK"); // small response (prevents 'output too large')
-  try {
-    await postNewPostsSilent(); // background work
-  } catch (error) {
-    console.error("Silent job failed:", error);
-  }
-});
+// --- Auto-fetch posts every 5 minutes ---
+setInterval(() => {
+  postNewPostsSilent().catch(err => console.error("Auto fetch error:", err));
+}, 5 * 60 * 1000); // 5 minutes
 
+// --- Manual endpoints ---
 app.get("/send", async (req, res) => {
-  const result = await postNewPosts();
-  res.json(result); // for manual debugging
+  try {
+    await postNewPostsSilent();
+    res.status(200).send("OK");
+  } catch {
+    res.status(500).send("ERROR");
+  }
 });
 
 app.get("/status", (req, res) => {
@@ -174,12 +135,15 @@ app.get("/status", (req, res) => {
 app.get("/reset", async (req, res) => {
   lastSentId = 0;
   saveLastSentId(0);
-  const result = await postNewPosts();
-  res.json({ status: "reset", message: result.message, lastSentId });
+  try {
+    await postNewPostsSilent();
+    res.json({ status: "reset", lastSentId });
+  } catch {
+    res.status(500).send("ERROR");
+  }
 });
 
 // --- Start server ---
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`➡️ Silent endpoint ready: /silent`);
 });
