@@ -147,13 +147,13 @@ const postNewPostsSilent = async () => {
 };
 
 // --- Endpoints ---
+// ✅ Always return small "OK" to cron-job.org, run logic in background
 app.get("/silent", async (req, res) => {
+  res.status(200).send("OK"); // small response (prevents 'output too large')
   try {
-    console.log("Silent cron ping received"); // only logs in console
-    res.status(200).send("OK"); // keep response tiny
+    await postNewPostsSilent(); // background work
   } catch (error) {
-    console.error("Error in /silent:", error);
-    res.status(500).send("ERROR");
+    console.error("Silent job failed:", error);
   }
 });
 
