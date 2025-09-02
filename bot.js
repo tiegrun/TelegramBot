@@ -73,39 +73,60 @@ const fetchPosts = async () => {
 const isValidPost = (post) =>
   post && typeof post.id === "number" && post.title && post.summary;
 
-// --- Post new posts (silent, minimal logs) ---
+// --- Post a batch of posts (up to batchSize) ---
+const postBatch = async (posts, batchSize = 5) => {
+  const batch = posts.slice(0, batchSize);
+  for (let post of batch) {
+    try {
+      const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
+      const buttons = [[
+        { text: "▶️ YouTube", url: post.youtubeUrl || "https://youtube.com" },
+        { text: "🌐 Website", url: "https://www.tieg.run/" }
+      ]];
+
+      if (post.imageUrl) {
+        await bot.sendPhoto(channelId, post.imageUrl, {
+          caption: message,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: buttons }
+        });
+      } else {
+        await bot.sendMessage(channelId, message, {
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: buttons }
+        });
+      }
+
+      lastSentId = post.id;
+      saveLastSentId(lastSentId);
+      await new Promise(r => setTimeout(r, 1000));
+    } catch (err) {
+      console.error(`Failed to send post ${post.id}:`, err.message);
+    }
+  }
+
+  return posts.slice(batchSize); // remaining posts
+};
+
+// --- Silent batch posting with delay between batches ---
 const postNewPostsSilent = async () => {
   try {
-    const posts = await fetchPosts();
-    const newPosts = posts.filter(isValidPost).filter((p) => p.id > lastSentId);
+    let posts = await fetchPosts();
+    let newPosts = posts.filter(isValidPost).filter(p => p.id > lastSentId);
     if (!newPosts.length) return;
 
     newPosts.sort((a, b) => a.id - b.id);
 
-    for (let post of newPosts) {
-      try {
-        const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
-        const buttons = [[
-          { text: "▶️ YouTube", url: post.youtubeUrl || "https://youtube.com" },
-          { text: "🌐 Website", url: "https://www.tieg.run/" }
-        ]];
-
-        if (post.imageUrl) {
-          await bot.sendPhoto(channelId, post.imageUrl, {
-            caption: message, parse_mode: "HTML", reply_markup: { inline_keyboard: buttons }
-          });
-        } else {
-          await bot.sendMessage(channelId, message, {
-            parse_mode: "HTML", reply_markup: { inline_keyboard: buttons }
-          });
-        }
-
-        lastSentId = post.id;
-        saveLastSentId(lastSentId);
-        await new Promise(r => setTimeout(r, 1000));
-      } catch {}
+    while (newPosts.length > 0) {
+      newPosts = await postBatch(newPosts, 5); // post 5 at a time
+      if (newPosts.length > 0) {
+        console.log("Waiting 3 minutes for next batch...");
+        await new Promise(r => setTimeout(r, 3 * 60 * 1000)); // wait 3 minutes
+      }
     }
-  } catch {}
+  } catch (err) {
+    console.error("Error in silent posting:", err.message);
+  }
 };
 
 // --- Auto-fetch posts every 5 minutes ---
