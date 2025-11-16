@@ -139,8 +139,19 @@ const postBatch = async (posts, batchSize = 5) => {
   return posts.slice(batchSize); // remaining posts
 };
 
+// --- Posting lock to prevent concurrent runs ---
+let isPosting = false;
+
 // --- Silent batch posting with delay between batches ---
 const postNewPostsSilent = async () => {
+  // Prevent concurrent execution
+  if (isPosting) {
+    console.log("⚠️ Already posting, skipping this run");
+    return;
+  }
+  
+  isPosting = true;
+  
   try {
     console.log("🔍 Fetching posts...");
     let posts = await fetchPosts();
@@ -166,6 +177,8 @@ const postNewPostsSilent = async () => {
     console.log("✅ All new posts sent successfully");
   } catch (err) {
     console.error("❌ Error in silent posting:", err.message);
+  } finally {
+    isPosting = false;
   }
 };
 
