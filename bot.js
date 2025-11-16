@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 app.use(express.json());
 
-// --- Health check ---
+// Health check
 app.get("/", (req, res) => res.send("Bot is running ✅"));
 
 // --- Telegram Bot ---
@@ -20,27 +20,26 @@ if (!token) {
 
 if (!global.botInstance) {
   global.botInstance = new TelegramBot(token, { polling: false });
-  console.log("🤖 Bot initialized once");
 }
 const bot = global.botInstance;
 
 // --- Channel & Group IDs ---
-const channelId = -1003010205363;
-const groupId   = -4880247765;   // your group
+const channelId = -1003010205363; // your channel
+const groupId = -4880247765;      // your group
 const targets = [channelId, groupId];
 
-// --- Posts source ---
+// --- JSON source ---
 const POSTS_URL = "https://www.jsonkeeper.com/b/0VPTV";
 
-// --- Last sent post persistence ---
+// --- Last ID memory ---
 const lastIdFile = "lastSentId.json";
 let lastSentId = 0;
 
 const loadLastSentId = () => {
   try {
     if (fs.existsSync(lastIdFile)) {
-      const parsed = JSON.parse(fs.readFileSync(lastIdFile, "utf8"));
-      lastSentId = parsed.lastId || 0;
+      const data = JSON.parse(fs.readFileSync(lastIdFile, "utf8"));
+      lastSentId = data.lastId || 0;
     }
   } catch {
     lastSentId = 0;
@@ -59,26 +58,23 @@ loadLastSentId();
 const fetchPosts = async () => {
   try {
     const res = await axios.get(POSTS_URL, { timeout: 10000 });
-    if (!res.data) return [];
-    return Array.isArray(res.data)
-      ? res.data
-      : res.data.posts && Array.isArray(res.data.posts)
-      ? res.data.posts
-      : [];
+    const data = res.data;
+
+    if (Array.isArray(data)) return data;
+    if (data.posts && Array.isArray(data.posts)) return data.posts;
+
+    return [];
   } catch {
     return [];
   }
 };
 
-// --- Validate post ---
+// Validate
 const isValidPost = (post) =>
   post && typeof post.id === "number" && post.title && post.summary;
 
-
-// --- FIXED: sends & returns success/fail per target ---
+// --- Send to channel & group ---
 const sendToTargets = async (targets, post, message, buttons) => {
-  const results = [];
-
   for (let target of targets) {
     try {
       if (post.imageUrl) {
@@ -93,114 +89,62 @@ const sendToTargets = async (targets, post, message, buttons) => {
           reply_markup: { inline_keyboard: buttons }
         });
       }
-
-      results.push(true);
     } catch (err) {
       console.error(`❌ Failed to send to ${target}:`, err.message);
-      results.push(false);
     }
-  }
-
-  return results;
-};
-
-
-// --- FIXED: Update lastSentId ONLY when BOTH succeed ---
-const postBatch = async (posts, batchSize = 5) => {
-  const batch = posts.slice(0, batchSize);
-
-  for (let post of batch) {
-    try {
-      const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
-      const buttons = [[
-        { text: "▶️ YouTube", url: post.youtubeUrl || "https://youtube.com" },
-        { text: "🌐 Website", url: "https://www.tieg.run/" }
-      ]];
-
-      const results = await sendToTargets(targets, post, message, buttons);
-
-      // FIX: Only update when ALL targets succeed
-      if (results.every(r => r === true)) {
-        lastSentId = post.id;
-        saveLastSentId(lastSentId);
-        console.log(`✔️ Post ${post.id} sent to ALL targets`);
-      } else {
-        console.log(`⚠️ Post ${post.id} NOT fully delivered, will retry`);
-        break; // stop batch and retry on next cycle
-      }
-
-      await new Promise(r => setTimeout(r, 1000));
-
-    } catch (err) {
-      console.error(`Failed to send post ${post.id}:`, err.message);
-    }
-  }
-
-  return posts.slice(batchSize);
-};
-
-
-// --- Silent posting ---
-const postNewPostsSilent = async () => {
-  try {
-    let posts = await fetchPosts();
-    let newPosts = posts.filter(isValidPost).filter(p => p.id > lastSentId);
-    if (!newPosts.length) return;
-
-    newPosts.sort((a, b) => a.id - b.id);
-
-    while (newPosts.length > 0) {
-      newPosts = await postBatch(newPosts, 5);
-
-      if (newPosts.length > 0) {
-        console.log("⏳ Waiting 3 minutes for next batch...");
-        await new Promise(r => setTimeout(r, 3 * 60 * 1000));
-      }
-    }
-  } catch (err) {
-    console.error("Error in silent posting:", err.message);
   }
 };
 
+// --- Send ALL new posts instantly ---
+const postAllNewPosts = async () => {
+  const posts = await fetchPosts();
+  const newPosts = posts
+    .filter(isValidPost)
+    .filter((p) => p.id > lastSentId)
+    .sort((a, b) => a.id - b.id);
 
-// --- Auto-fetch every 5 min ---
+  if (!newPosts.length) return;
+
+  for (let post of newPosts) {
+    const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
+    const buttons = [[
+      { text: "▶️ YouTube", url: post.youtubeUrl || "https://youtube.com" },
+      { text: "🌐 Website", url: "https://www.tieg.run/" }
+    ]];
+
+    await sendToTargets(targets, post, message, buttons);
+
+    lastSentId = post.id;
+    saveLastSentId(lastSentId);
+
+    await new Promise(r => setTimeout(r, 800)); // small anti-flood pause
+  }
+};
+
+// --- Auto run every 5 minutes ---
 setInterval(() => {
-  postNewPostsSilent().catch(err => console.error("Auto fetch error:", err));
+  postAllNewPosts().catch(err => console.error(err));
 }, 5 * 60 * 1000);
 
-
-// --- Manual endpoints ---
+// Manual endpoint
 app.get("/send", async (req, res) => {
   try {
-    await postNewPostsSilent();
-    res.status(200).send("OK");
+    await postAllNewPosts();
+    res.send("OK");
   } catch {
     res.status(500).send("ERROR");
   }
 });
 
-app.get("/status", (req, res) => {
-  res.json({
-    status: "running",
-    lastSentId,
-    targets,
-    timestamp: new Date().toISOString(),
-  });
-});
-
+// Reset endpoint
 app.get("/reset", async (req, res) => {
   lastSentId = 0;
   saveLastSentId(0);
-
-  try {
-    await postNewPostsSilent();
-    res.json({ status: "reset", lastSentId });
-  } catch {
-    res.status(500).send("ERROR");
-  }
+  await postAllNewPosts();
+  res.json({ status: "reset" });
 });
 
-// --- Start server ---
+// Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
