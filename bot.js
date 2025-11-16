@@ -18,6 +18,7 @@ if (!token) {
   process.exit(1);
 }
 
+// ✅ Prevent multiple initializations
 if (!global.botInstance) {
   global.botInstance = new TelegramBot(token, { polling: false });
   console.log("🤖 Bot initialized once");
@@ -28,6 +29,10 @@ const bot = global.botInstance;
 const channelId = -1003010205363;
 const groupId = -4880247765;
 const targets = [channelId, groupId];  // Send to both channel and group
+
+console.log(`📢 Bot will post to:`);
+console.log(`   Channel: ${channelId}`);
+console.log(`   Group: ${groupId}`);
 
 // --- Posts source ---
 const POSTS_URL = "https://www.jsonkeeper.com/b/0VPTV";
@@ -86,6 +91,7 @@ const postBatch = async (posts, batchSize = 5) => {
       ]];
 
       // Send each post to both channel AND group
+      let successCount = 0;
       for (let target of targets) {
         try {
           if (post.imageUrl) {
@@ -100,22 +106,26 @@ const postBatch = async (posts, batchSize = 5) => {
               reply_markup: { inline_keyboard: buttons }
             });
           }
+          successCount++;
+          console.log(`✅ Post ${post.id} sent to ${target === channelId ? 'channel' : 'group'}`);
         } catch (err) {
-          console.error(`❌ Failed to send post ${post.id} to ${target}:`, err.message);
+          console.error(`❌ Failed to send post ${post.id} to ${target === channelId ? 'channel' : 'group'} (${target}):`, err.message);
         }
       }
 
-      lastSentId = post.id;
-      saveLastSentId(lastSentId);
+      // Only update lastSentId if at least one destination succeeded
+      if (successCount > 0) {
+        lastSentId = post.id;
+        saveLastSentId(lastSentId);
+      }
 
-      // Wait 1 second before sending the next post (to avoid flooding)
       await new Promise(r => setTimeout(r, 1000));
     } catch (err) {
       console.error(`Failed to send post ${post.id}:`, err.message);
     }
   }
 
-  return posts.slice(batchSize); // remaining posts after this batch
+  return posts.slice(batchSize); // remaining posts
 };
 
 // --- Silent batch posting with delay between batches ---
@@ -123,17 +133,22 @@ const postNewPostsSilent = async () => {
   try {
     let posts = await fetchPosts();
     let newPosts = posts.filter(isValidPost).filter(p => p.id > lastSentId);
-    if (!newPosts.length) return;
+    if (!newPosts.length) {
+      console.log("No new posts to send");
+      return;
+    }
 
     newPosts.sort((a, b) => a.id - b.id);
+    console.log(`📬 Found ${newPosts.length} new post(s) to send`);
 
     while (newPosts.length > 0) {
-      newPosts = await postBatch(newPosts, 5);
+      newPosts = await postBatch(newPosts, 5); // post 5 at a time
       if (newPosts.length > 0) {
-        console.log("Waiting 3 minutes for next batch...");
+        console.log(`⏳ Waiting 3 minutes before next batch... (${newPosts.length} posts remaining)`);
         await new Promise(r => setTimeout(r, 3 * 60 * 1000)); // wait 3 minutes
       }
     }
+    console.log("✅ All posts sent successfully");
   } catch (err) {
     console.error("Error in silent posting:", err.message);
   }
@@ -141,8 +156,9 @@ const postNewPostsSilent = async () => {
 
 // --- Auto-fetch posts every 5 minutes ---
 setInterval(() => {
+  console.log("🔄 Auto-checking for new posts...");
   postNewPostsSilent().catch(err => console.error("Auto fetch error:", err));
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000); // 5 minutes
 
 // --- Manual endpoints ---
 app.get("/send", async (req, res) => {
@@ -160,6 +176,7 @@ app.get("/status", (req, res) => {
     lastSentId,
     channelId,
     groupId,
+    targets: targets,
     timestamp: new Date().toISOString(),
   });
 });
@@ -167,6 +184,7 @@ app.get("/status", (req, res) => {
 app.get("/reset", async (req, res) => {
   lastSentId = 0;
   saveLastSentId(0);
+  console.log("🔄 Reset lastSentId to 0");
   try {
     await postNewPostsSilent();
     res.json({ status: "reset", lastSentId });
@@ -178,4 +196,7 @@ app.get("/reset", async (req, res) => {
 // --- Start server ---
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📊 Status endpoint: http://localhost:${PORT}/status`);
+  console.log(`📤 Manual send: http://localhost:${PORT}/send`);
+  console.log(`🔄 Reset & resend: http://localhost:${PORT}/reset`);
 });
