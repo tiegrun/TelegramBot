@@ -18,15 +18,17 @@ if (!token) {
   process.exit(1);
 }
 
-// ✅ Prevent multiple initializations
+// Prevent multiple initializations
 if (!global.botInstance) {
   global.botInstance = new TelegramBot(token, { polling: false });
   console.log("🤖 Bot initialized once");
 }
 const bot = global.botInstance;
 
-// --- Channel ID ---
-const channelId = -1003010205363;
+// --- Channel & Group IDs ---
+const channelId = -1003010205363;       // your channel
+const groupId = -4880247765;            // your group
+const targets = [channelId, groupId];   // send to both
 
 // --- Posts source ---
 const POSTS_URL = "https://www.jsonkeeper.com/b/0VPTV";
@@ -73,9 +75,32 @@ const fetchPosts = async () => {
 const isValidPost = (post) =>
   post && typeof post.id === "number" && post.title && post.summary;
 
-// --- Post a batch of posts (up to batchSize) ---
+// --- Helper: Send message to channel AND group ---
+const sendToTargets = async (targets, post, message, buttons) => {
+  for (let target of targets) {
+    try {
+      if (post.imageUrl) {
+        await bot.sendPhoto(target, post.imageUrl, {
+          caption: message,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: buttons }
+        });
+      } else {
+        await bot.sendMessage(target, message, {
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: buttons }
+        });
+      }
+    } catch (err) {
+      console.error(`❌ Failed to send to ${target}:`, err.message);
+    }
+  }
+};
+
+// --- Post a batch of posts ---
 const postBatch = async (posts, batchSize = 5) => {
   const batch = posts.slice(0, batchSize);
+
   for (let post of batch) {
     try {
       const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
@@ -84,31 +109,21 @@ const postBatch = async (posts, batchSize = 5) => {
         { text: "🌐 Website", url: "https://www.tieg.run/" }
       ]];
 
-      if (post.imageUrl) {
-        await bot.sendPhoto(channelId, post.imageUrl, {
-          caption: message,
-          parse_mode: "HTML",
-          reply_markup: { inline_keyboard: buttons }
-        });
-      } else {
-        await bot.sendMessage(channelId, message, {
-          parse_mode: "HTML",
-          reply_markup: { inline_keyboard: buttons }
-        });
-      }
+      await sendToTargets(targets, post, message, buttons);
 
       lastSentId = post.id;
       saveLastSentId(lastSentId);
+
       await new Promise(r => setTimeout(r, 1000));
     } catch (err) {
       console.error(`Failed to send post ${post.id}:`, err.message);
     }
   }
 
-  return posts.slice(batchSize); // remaining posts
+  return posts.slice(batchSize);
 };
 
-// --- Silent batch posting with delay between batches ---
+// --- Silent batch posting with delay ---
 const postNewPostsSilent = async () => {
   try {
     let posts = await fetchPosts();
@@ -118,10 +133,11 @@ const postNewPostsSilent = async () => {
     newPosts.sort((a, b) => a.id - b.id);
 
     while (newPosts.length > 0) {
-      newPosts = await postBatch(newPosts, 5); // post 5 at a time
+      newPosts = await postBatch(newPosts, 5);
+
       if (newPosts.length > 0) {
-        console.log("Waiting 3 minutes for next batch...");
-        await new Promise(r => setTimeout(r, 3 * 60 * 1000)); // wait 3 minutes
+        console.log("⏳ Waiting 3 minutes for next batch...");
+        await new Promise(r => setTimeout(r, 3 * 60 * 1000));
       }
     }
   } catch (err) {
@@ -129,10 +145,10 @@ const postNewPostsSilent = async () => {
   }
 };
 
-// --- Auto-fetch posts every 5 minutes ---
+// --- Auto-fetch every 5 minutes ---
 setInterval(() => {
   postNewPostsSilent().catch(err => console.error("Auto fetch error:", err));
-}, 5 * 60 * 1000); // 5 minutes
+}, 5 * 60 * 1000);
 
 // --- Manual endpoints ---
 app.get("/send", async (req, res) => {
@@ -148,7 +164,7 @@ app.get("/status", (req, res) => {
   res.json({
     status: "running",
     lastSentId,
-    channelId,
+    targets,
     timestamp: new Date().toISOString(),
   });
 });
@@ -156,6 +172,7 @@ app.get("/status", (req, res) => {
 app.get("/reset", async (req, res) => {
   lastSentId = 0;
   saveLastSentId(0);
+
   try {
     await postNewPostsSilent();
     res.json({ status: "reset", lastSentId });
