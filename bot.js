@@ -28,7 +28,6 @@ const bot = global.botInstance;
 // --- Channel and Group IDs ---
 const channelId = -1003010205363;
 const groupId = -4880247765;
-const targets = [channelId, groupId];  // Send to both channel and group
 
 console.log(`📢 Bot will post to:`);
 console.log(`   Channel: ${channelId}`);
@@ -90,35 +89,46 @@ const postBatch = async (posts, batchSize = 5) => {
         { text: "🌐 Website", url: "https://www.tieg.run/" }
       ]];
 
-      // Send each post to both channel AND group
-      let successCount = 0;
-      for (let target of targets) {
-        try {
-          if (post.imageUrl) {
-            await bot.sendPhoto(target, post.imageUrl, {
-              caption: message,
-              parse_mode: "HTML",
-              reply_markup: { inline_keyboard: buttons }
-            });
-          } else {
-            await bot.sendMessage(target, message, {
-              parse_mode: "HTML",
-              reply_markup: { inline_keyboard: buttons }
-            });
-          }
-          successCount++;
-          console.log(`✅ Post ${post.id} sent to ${target === channelId ? 'channel' : 'group'}`);
-        } catch (err) {
-          console.error(`❌ Failed to send post ${post.id} to ${target === channelId ? 'channel' : 'group'} (${target}):`, err.message);
+      // Send to channel
+      try {
+        if (post.imageUrl) {
+          await bot.sendPhoto(channelId, post.imageUrl, {
+            caption: message,
+            parse_mode: "HTML",
+            reply_markup: { inline_keyboard: buttons }
+          });
+        } else {
+          await bot.sendMessage(channelId, message, {
+            parse_mode: "HTML",
+            reply_markup: { inline_keyboard: buttons }
+          });
         }
+        console.log(`✅ Post ${post.id} sent to channel`);
+      } catch (err) {
+        console.error(`❌ Failed to send post ${post.id} to channel:`, err.message);
       }
 
-      // Only update lastSentId if at least one destination succeeded
-      if (successCount > 0) {
-        lastSentId = post.id;
-        saveLastSentId(lastSentId);
+      // Send to group
+      try {
+        if (post.imageUrl) {
+          await bot.sendPhoto(groupId, post.imageUrl, {
+            caption: message,
+            parse_mode: "HTML",
+            reply_markup: { inline_keyboard: buttons }
+          });
+        } else {
+          await bot.sendMessage(groupId, message, {
+            parse_mode: "HTML",
+            reply_markup: { inline_keyboard: buttons }
+          });
+        }
+        console.log(`✅ Post ${post.id} sent to group`);
+      } catch (err) {
+        console.error(`❌ Failed to send post ${post.id} to group:`, err.message);
       }
 
+      lastSentId = post.id;
+      saveLastSentId(lastSentId);
       await new Promise(r => setTimeout(r, 1000));
     } catch (err) {
       console.error(`Failed to send post ${post.id}:`, err.message);
@@ -176,7 +186,6 @@ app.get("/status", (req, res) => {
     lastSentId,
     channelId,
     groupId,
-    targets: targets,
     timestamp: new Date().toISOString(),
   });
 });
