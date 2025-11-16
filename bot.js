@@ -24,12 +24,12 @@ if (!global.botInstance) {
 }
 const bot = global.botInstance;
 
-// --- Channel + Group IDs ---
+// --- Channel and Group IDs ---
 const channelId = -1003010205363;
 const groupId = -4880247765;
-const targets = [channelId, groupId]; // ← NEW
+const targets = [channelId, groupId];  // Send to both channel and group
 
-// --- JSON source ---
+// --- Posts source ---
 const POSTS_URL = "https://www.jsonkeeper.com/b/0VPTV";
 
 // --- Last sent post persistence ---
@@ -74,7 +74,7 @@ const fetchPosts = async () => {
 const isValidPost = (post) =>
   post && typeof post.id === "number" && post.title && post.summary;
 
-// --- Post a batch of posts (5 at a time) ---
+// --- Post a batch of posts (up to batchSize) ---
 const postBatch = async (posts, batchSize = 5) => {
   const batch = posts.slice(0, batchSize);
   for (let post of batch) {
@@ -85,7 +85,7 @@ const postBatch = async (posts, batchSize = 5) => {
         { text: "🌐 Website", url: "https://www.tieg.run/" }
       ]];
 
-      // --- Send to Channel + Group ---
+      // Send each post to both channel AND group
       for (let target of targets) {
         try {
           if (post.imageUrl) {
@@ -101,24 +101,24 @@ const postBatch = async (posts, batchSize = 5) => {
             });
           }
         } catch (err) {
-          console.error(`❌ Failed to send to ${target}:`, err.message);
+          console.error(`❌ Failed to send post ${post.id} to ${target}:`, err.message);
         }
       }
 
       lastSentId = post.id;
       saveLastSentId(lastSentId);
 
+      // Wait 1 second before sending the next post (to avoid flooding)
       await new Promise(r => setTimeout(r, 1000));
-
     } catch (err) {
       console.error(`Failed to send post ${post.id}:`, err.message);
     }
   }
 
-  return posts.slice(batchSize); // remaining
+  return posts.slice(batchSize); // remaining posts after this batch
 };
 
-// --- Silent batch posting with 3 min delay ---
+// --- Silent batch posting with delay between batches ---
 const postNewPostsSilent = async () => {
   try {
     let posts = await fetchPosts();
@@ -131,7 +131,7 @@ const postNewPostsSilent = async () => {
       newPosts = await postBatch(newPosts, 5);
       if (newPosts.length > 0) {
         console.log("Waiting 3 minutes for next batch...");
-        await new Promise(r => setTimeout(r, 3 * 60 * 1000));
+        await new Promise(r => setTimeout(r, 3 * 60 * 1000)); // wait 3 minutes
       }
     }
   } catch (err) {
@@ -139,7 +139,7 @@ const postNewPostsSilent = async () => {
   }
 };
 
-// --- Auto-fetch every 5 minutes ---
+// --- Auto-fetch posts every 5 minutes ---
 setInterval(() => {
   postNewPostsSilent().catch(err => console.error("Auto fetch error:", err));
 }, 5 * 60 * 1000);
