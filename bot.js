@@ -27,7 +27,7 @@ const bot = global.botInstance;
 
 // --- Channel and Group IDs ---
 const channelId = -1003010205363;
-const groupId = -4880247765;
+const groupId = -1003330903443;
 
 console.log(`📢 Bot will post to Channel: ${channelId} and Group: ${groupId}`);
 
