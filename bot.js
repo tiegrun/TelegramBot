@@ -29,9 +29,7 @@ const bot = global.botInstance;
 const channelId = -1003010205363;
 const groupId = -4880247765;
 
-console.log(`📢 Bot will post to:`);
-console.log(`   Channel: ${channelId}`);
-console.log(`   Group: ${groupId}`);
+console.log(`📢 Bot will post to Channel: ${channelId} and Group: ${groupId}`);
 
 // --- Posts source ---
 const POSTS_URL = "https://www.jsonkeeper.com/b/0VPTV";
@@ -45,6 +43,7 @@ const loadLastSentId = () => {
     if (fs.existsSync(lastIdFile)) {
       const parsed = JSON.parse(fs.readFileSync(lastIdFile, "utf8"));
       lastSentId = parsed.lastId || 0;
+      console.log(`📋 Loaded lastSentId: ${lastSentId}`);
     }
   } catch {
     lastSentId = 0;
@@ -54,7 +53,10 @@ const loadLastSentId = () => {
 const saveLastSentId = (id) => {
   try {
     fs.writeFileSync(lastIdFile, JSON.stringify({ lastId: id }));
-  } catch {}
+    console.log(`💾 Saved lastSentId: ${id}`);
+  } catch (err) {
+    console.error("Failed to save lastSentId:", err.message);
+  }
 };
 
 loadLastSentId();
@@ -69,7 +71,8 @@ const fetchPosts = async () => {
       : res.data.posts && Array.isArray(res.data.posts)
       ? res.data.posts
       : [];
-  } catch {
+  } catch (err) {
+    console.error("Failed to fetch posts:", err.message);
     return [];
   }
 };
@@ -78,61 +81,59 @@ const fetchPosts = async () => {
 const isValidPost = (post) =>
   post && typeof post.id === "number" && post.title && post.summary;
 
+// --- Send single post to a target ---
+const sendPost = async (targetId, post, message, buttons) => {
+  try {
+    if (post.imageUrl) {
+      await bot.sendPhoto(targetId, post.imageUrl, {
+        caption: message,
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: buttons }
+      });
+    } else {
+      await bot.sendMessage(targetId, message, {
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: buttons }
+      });
+    }
+    return true;
+  } catch (err) {
+    console.error(`❌ Failed to send post ${post.id} to ${targetId}:`, err.message);
+    return false;
+  }
+};
+
 // --- Post a batch of posts (up to batchSize) ---
 const postBatch = async (posts, batchSize = 5) => {
   const batch = posts.slice(0, batchSize);
+  
   for (let post of batch) {
-    try {
-      const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
-      const buttons = [[
-        { text: "▶️ YouTube", url: post.youtubeUrl || "https://youtube.com" },
-        { text: "🌐 Website", url: "https://www.tieg.run/" }
-      ]];
+    const message = `📰 <b>${post.title}</b>\n\n${post.summary}`;
+    const buttons = [[
+      { text: "▶️ YouTube", url: post.youtubeUrl || "https://youtube.com" },
+      { text: "🌐 Website", url: "https://www.tieg.run/" }
+    ]];
 
-      // Send to channel
-      try {
-        if (post.imageUrl) {
-          await bot.sendPhoto(channelId, post.imageUrl, {
-            caption: message,
-            parse_mode: "HTML",
-            reply_markup: { inline_keyboard: buttons }
-          });
-        } else {
-          await bot.sendMessage(channelId, message, {
-            parse_mode: "HTML",
-            reply_markup: { inline_keyboard: buttons }
-          });
-        }
-        console.log(`✅ Post ${post.id} sent to channel`);
-      } catch (err) {
-        console.error(`❌ Failed to send post ${post.id} to channel:`, err.message);
-      }
+    // Send to channel
+    const channelSuccess = await sendPost(channelId, post, message, buttons);
+    if (channelSuccess) {
+      console.log(`✅ Post ${post.id} sent to channel`);
+    }
 
-      // Send to group
-      try {
-        if (post.imageUrl) {
-          await bot.sendPhoto(groupId, post.imageUrl, {
-            caption: message,
-            parse_mode: "HTML",
-            reply_markup: { inline_keyboard: buttons }
-          });
-        } else {
-          await bot.sendMessage(groupId, message, {
-            parse_mode: "HTML",
-            reply_markup: { inline_keyboard: buttons }
-          });
-        }
-        console.log(`✅ Post ${post.id} sent to group`);
-      } catch (err) {
-        console.error(`❌ Failed to send post ${post.id} to group:`, err.message);
-      }
+    // Send to group
+    const groupSuccess = await sendPost(groupId, post, message, buttons);
+    if (groupSuccess) {
+      console.log(`✅ Post ${post.id} sent to group`);
+    }
 
+    // Update lastSentId only if channel succeeded (your primary target)
+    if (channelSuccess) {
       lastSentId = post.id;
       saveLastSentId(lastSentId);
-      await new Promise(r => setTimeout(r, 1000));
-    } catch (err) {
-      console.error(`Failed to send post ${post.id}:`, err.message);
     }
+
+    // Wait 1 second before next post
+    await new Promise(r => setTimeout(r, 1000));
   }
 
   return posts.slice(batchSize); // remaining posts
@@ -141,10 +142,12 @@ const postBatch = async (posts, batchSize = 5) => {
 // --- Silent batch posting with delay between batches ---
 const postNewPostsSilent = async () => {
   try {
+    console.log("🔍 Fetching posts...");
     let posts = await fetchPosts();
     let newPosts = posts.filter(isValidPost).filter(p => p.id > lastSentId);
+    
     if (!newPosts.length) {
-      console.log("No new posts to send");
+      console.log("✓ No new posts to send");
       return;
     }
 
@@ -153,14 +156,16 @@ const postNewPostsSilent = async () => {
 
     while (newPosts.length > 0) {
       newPosts = await postBatch(newPosts, 5); // post 5 at a time
+      
       if (newPosts.length > 0) {
         console.log(`⏳ Waiting 3 minutes before next batch... (${newPosts.length} posts remaining)`);
         await new Promise(r => setTimeout(r, 3 * 60 * 1000)); // wait 3 minutes
       }
     }
-    console.log("✅ All posts sent successfully");
+    
+    console.log("✅ All new posts sent successfully");
   } catch (err) {
-    console.error("Error in silent posting:", err.message);
+    console.error("❌ Error in silent posting:", err.message);
   }
 };
 
@@ -169,6 +174,12 @@ setInterval(() => {
   console.log("🔄 Auto-checking for new posts...");
   postNewPostsSilent().catch(err => console.error("Auto fetch error:", err));
 }, 5 * 60 * 1000); // 5 minutes
+
+// Initial check on startup
+console.log("🚀 Running initial post check...");
+setTimeout(() => {
+  postNewPostsSilent().catch(err => console.error("Initial fetch error:", err));
+}, 5000); // Wait 5 seconds after startup
 
 // --- Manual endpoints ---
 app.get("/send", async (req, res) => {
@@ -191,12 +202,14 @@ app.get("/status", (req, res) => {
 });
 
 app.get("/reset", async (req, res) => {
+  const oldId = lastSentId;
   lastSentId = 0;
   saveLastSentId(0);
-  console.log("🔄 Reset lastSentId to 0");
+  console.log(`🔄 Reset lastSentId from ${oldId} to 0`);
+  
   try {
     await postNewPostsSilent();
-    res.json({ status: "reset", lastSentId });
+    res.json({ status: "reset", oldId, newId: lastSentId });
   } catch {
     res.status(500).send("ERROR");
   }
@@ -205,7 +218,7 @@ app.get("/reset", async (req, res) => {
 // --- Start server ---
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Status endpoint: http://localhost:${PORT}/status`);
+  console.log(`📊 Status: http://localhost:${PORT}/status`);
   console.log(`📤 Manual send: http://localhost:${PORT}/send`);
-  console.log(`🔄 Reset & resend: http://localhost:${PORT}/reset`);
+  console.log(`🔄 Reset: http://localhost:${PORT}/reset`);
 });
