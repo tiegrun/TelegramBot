@@ -18,7 +18,6 @@ if (!token) {
   process.exit(1);
 }
 
-// Prevent multiple initializations
 if (!global.botInstance) {
   global.botInstance = new TelegramBot(token, { polling: false });
   console.log("🤖 Bot initialized once");
@@ -26,9 +25,9 @@ if (!global.botInstance) {
 const bot = global.botInstance;
 
 // --- Channel & Group IDs ---
-const channelId = -1003010205363;       // your channel
-const groupId = -4880247765;            // your group
-const targets = [channelId, groupId];   // send to both
+const channelId = -1003010205363;
+const groupId   = -4880247765;   // your group
+const targets = [channelId, groupId];
 
 // --- Posts source ---
 const POSTS_URL = "https://www.jsonkeeper.com/b/0VPTV";
@@ -75,8 +74,11 @@ const fetchPosts = async () => {
 const isValidPost = (post) =>
   post && typeof post.id === "number" && post.title && post.summary;
 
-// --- Helper: Send message to channel AND group ---
+
+// --- FIXED: sends & returns success/fail per target ---
 const sendToTargets = async (targets, post, message, buttons) => {
+  const results = [];
+
   for (let target of targets) {
     try {
       if (post.imageUrl) {
@@ -91,13 +93,19 @@ const sendToTargets = async (targets, post, message, buttons) => {
           reply_markup: { inline_keyboard: buttons }
         });
       }
+
+      results.push(true);
     } catch (err) {
       console.error(`❌ Failed to send to ${target}:`, err.message);
+      results.push(false);
     }
   }
+
+  return results;
 };
 
-// --- Post a batch of posts ---
+
+// --- FIXED: Update lastSentId ONLY when BOTH succeed ---
 const postBatch = async (posts, batchSize = 5) => {
   const batch = posts.slice(0, batchSize);
 
@@ -109,12 +117,20 @@ const postBatch = async (posts, batchSize = 5) => {
         { text: "🌐 Website", url: "https://www.tieg.run/" }
       ]];
 
-      await sendToTargets(targets, post, message, buttons);
+      const results = await sendToTargets(targets, post, message, buttons);
 
-      lastSentId = post.id;
-      saveLastSentId(lastSentId);
+      // FIX: Only update when ALL targets succeed
+      if (results.every(r => r === true)) {
+        lastSentId = post.id;
+        saveLastSentId(lastSentId);
+        console.log(`✔️ Post ${post.id} sent to ALL targets`);
+      } else {
+        console.log(`⚠️ Post ${post.id} NOT fully delivered, will retry`);
+        break; // stop batch and retry on next cycle
+      }
 
       await new Promise(r => setTimeout(r, 1000));
+
     } catch (err) {
       console.error(`Failed to send post ${post.id}:`, err.message);
     }
@@ -123,7 +139,8 @@ const postBatch = async (posts, batchSize = 5) => {
   return posts.slice(batchSize);
 };
 
-// --- Silent batch posting with delay ---
+
+// --- Silent posting ---
 const postNewPostsSilent = async () => {
   try {
     let posts = await fetchPosts();
@@ -145,10 +162,12 @@ const postNewPostsSilent = async () => {
   }
 };
 
-// --- Auto-fetch every 5 minutes ---
+
+// --- Auto-fetch every 5 min ---
 setInterval(() => {
   postNewPostsSilent().catch(err => console.error("Auto fetch error:", err));
 }, 5 * 60 * 1000);
+
 
 // --- Manual endpoints ---
 app.get("/send", async (req, res) => {
