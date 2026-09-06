@@ -1,3 +1,5 @@
+// Tieg.run
+
 require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const axios = require("axios");
@@ -26,6 +28,8 @@ if (!global.botInstance) {
 const bot = global.botInstance;
 
 // --- Channel and Group IDs ---
+// Tieg.run
+// Tieg.run
 const channelId = -1003010205363;
 const groupId = -1003330903443;
 
