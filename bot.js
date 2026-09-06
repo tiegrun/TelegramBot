@@ -1,5 +1,5 @@
-// Tieg.run
-
+// Tieg.run Telegram Bot
+// Tieg.run Telegram Bot
 // Tieg.run Telegram Bot
 
 require("dotenv").config();
