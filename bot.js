@@ -206,11 +206,16 @@ const postJaduBatch = async (posts, batchSize = 5) => {
   for (let post of batch) {
     const message = `✨ <b>${post.title}</b> ✨\n\n${post.summary}`;
     const buttons = [[
-      { text: "🔮 Այցելիր Վեբկայք - Jadu.am", url: post.linkUrl || "https://jadu.am" },
-      // { text: "📲 Share Channel", url: "https://t.me/jadu_am" }
+      { text: "🔮 Այցելիր Վեբկայք - Jadu.am", url: post.linkUrl || "https://jadu.am" }
     ]];
 
-    const channelSuccess = await sendPost(jaduBot, jaduChannelId, post, message, buttons);
+    // Create a copy of the post with a resized image (200x300 book ratio)
+    const jaduPost = { ...post };
+    if (jaduPost.imageUrl) {
+      jaduPost.imageUrl = `https://wsrv.nl/?url=${encodeURIComponent(post.imageUrl)}&w=200&h=300&fit=cover&output=jpg`;
+    }
+
+    const channelSuccess = await sendPost(jaduBot, jaduChannelId, jaduPost, message, buttons);
     if (channelSuccess) {
       console.log(`✅ [Jadu.am] Post ${post.id} sent to channel`);
       jaduLastSentId = post.id;
