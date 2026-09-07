@@ -206,8 +206,8 @@ const postJaduBatch = async (posts, batchSize = 5) => {
   for (let post of batch) {
     const message = `✨ <b>${post.title}</b> ✨\n\n${post.summary}`;
     const buttons = [[
-      { text: "🔮 Jadu.am Website", url: post.linkUrl || "https://jadu.am" },
-      { text: "📲 Share Channel", url: "https://t.me/jadu_am" }
+      { text: "🔮 Այցելիր Վեբկայք - Jadu.am", url: post.linkUrl || "https://jadu.am" },
+      // { text: "📲 Share Channel", url: "https://t.me/jadu_am" }
     ]];
 
     const channelSuccess = await sendPost(jaduBot, jaduChannelId, post, message, buttons);
