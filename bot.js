@@ -38,8 +38,15 @@ const getAxiosConfig = () => ({
   })
 });
 
+// const isValidPost = (post) =>
+//   post && typeof post.id === "number" && post.title && (post.summary || post.body);
+
 const isValidPost = (post) =>
-  post && typeof post.id === "number" && post.title && (post.summary || post.body);
+  post && 
+  post.active !== false && 
+  typeof post.id === "number" && 
+  post.title && 
+  (post.summary || post.body || post.description);
 
 const sendPost = async (botInstance, targetId, post, message, buttons) => {
   try {
