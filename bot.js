@@ -162,7 +162,7 @@ const runTiegCheck = async () => {
 // ==========================================
 // 2. JADU.AM BOT LOGIC
 // ==========================================
-const jaduChannelId = process.env.CHANNEL_ID || -1004392486557;
+const jaduChannelId = process.env.JADU_CHANNEL_ID || -1004392486557;
 const jaduPostsUrl = process.env.JADU_POSTS_URL || "https://www.jsonkeeper.com/b/OMS0Y";
 const jaduLastIdFile = "jaduLastSentId.json";
 let jaduLastSentId = 0;
