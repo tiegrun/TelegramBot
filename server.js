@@ -39,11 +39,15 @@ if (supportJaduToken && supportJaduGroupId) {
   supportJaduBot.on("message", async (msg) => {
     if (msg.chat.id.toString() === supportJaduGroupId.toString()) return;
 
+    // Handle /start commands with deep linking parameters from the website modals
     if (msg.text && msg.text.startsWith("/start")) {
-      await supportJaduBot.sendMessage(
-        msg.chat.id,
-        "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները, և մենք շուտով կպատասխանենք ձեզ:"
-      );
+      const isMembership = msg.text.includes("membership");
+
+      const greetingMessage = isMembership
+        ? "Բարև ձեզ! 🔮\nԴուք ցանկանում եք ձեռք բերել «Մուտքի արտոնագիր»: Գրեք ձեր տվյալները կամ հարցը, և մենք ձեզ կուղարկենք մանրամասները:"
+        : "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհրդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
+
+      await supportJaduBot.sendMessage(msg.chat.id, greetingMessage);
       return;
     }
 
