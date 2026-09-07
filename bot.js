@@ -208,7 +208,6 @@ const fetchJaduPosts = async () => {
   }
 };
 
-
 const postJaduBatch = async (posts, batchSize = 5) => {
   const batch = posts.slice(0, batchSize);
   for (let post of batch) {
