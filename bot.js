@@ -212,31 +212,25 @@ const fetchJaduPosts = async () => {
 const postJaduBatch = async (posts, batchSize = 5) => {
   const batch = posts.slice(0, batchSize);
   for (let post of batch) {
-    // Hidden zero-width space link forces Telegram to generate a small, crisp link preview thumbnail
-    const imagePreview = post.imageUrl ? `<a href="${post.imageUrl}">&#8203;</a>` : "";
     const description = post.summary || post.description || post.body || "";
-    
-    const message = `${imagePreview}✨ <b>${post.title}</b> ✨\n\n${description}`;
+    const message = `✨ <b>${post.title}</b> ✨\n\n${description}`;
     
     const buttons = [[
       { text: "🔮 Այցելիր Վեբկայք - Jadu.am", url: post.linkUrl || "https://jadu.am" }
     ]];
 
-    try {
-      // Send as regular text message (sendMessage) with link preview enabled
-      await jaduBot.sendMessage(jaduChannelId, message, {
-        parse_mode: "HTML",
-        disable_web_page_preview: false, // Allows Telegram to show the image as a small thumbnail card
-        reply_markup: { inline_keyboard: buttons }
-      });
+    // Wrap the book image inside a 600x600 square canvas with a white background
+    const jaduPost = { ...post };
+    if (jaduPost.imageUrl) {
+      jaduPost.imageUrl = `https://wsrv.nl/?url=${encodeURIComponent(post.imageUrl)}&w=600&h=600&fit=contain&bg=ffffff&output=jpg`;
+    }
 
+    const channelSuccess = await sendPost(jaduBot, jaduChannelId, jaduPost, message, buttons);
+    if (channelSuccess) {
       console.log(`✅ [Jadu.am] Post ${post.id} sent to channel`);
       jaduLastSentId = post.id;
       saveJaduLastSentId(jaduLastSentId);
-    } catch (err) {
-      console.error(`❌ [Jadu.am] Failed to send post ${post.id}:`, err.message);
     }
-
     await new Promise(r => setTimeout(r, 1000));
   }
   return posts.slice(batchSize);
