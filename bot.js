@@ -38,8 +38,16 @@ const getAxiosConfig = () => ({
   })
 });
 
-// const isValidPost = (post) =>
-//   post && typeof post.id === "number" && post.title && (post.summary || post.body);
+// Helper function to extract YouTube Thumbnail URL from standard YouTube URLs
+const getYouTubeThumbnail = (youtubeUrl) => {
+  if (!youtubeUrl) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = youtubeUrl.match(regExp);
+  if (match && match[2].length === 11) {
+    return `https://img.youtube.com/vi/${match[2]}/hqdefault.jpg`;
+  }
+  return null;
+};
 
 const isValidPost = (post) =>
   post && 
@@ -72,9 +80,9 @@ const sendPost = async (botInstance, targetId, post, message, buttons) => {
 // ==========================================
 // 1. TIEG.RUN BOT LOGIC
 // ==========================================
-const tiegChannelId = process.env.TIEGRUN_CHANNEL_ID 
-const tiegGroupId = process.env.TIEGRUN_GROUP_ID 
-const tiegPostsUrl = process.env.TIEGRUN_POSTS_URL 
+const tiegChannelId = process.env.TIEGRUN_CHANNEL_ID;
+const tiegGroupId = process.env.TIEGRUN_GROUP_ID;
+const tiegPostsUrl = process.env.TIEGRUN_POSTS_URL;
 const tiegLastIdFile = "lastSentId.json";
 let tiegLastSentId = 0;
 
@@ -169,8 +177,8 @@ const runTiegCheck = async () => {
 // ==========================================
 // 2. JADU.AM BOT LOGIC
 // ==========================================
-const jaduChannelId = process.env.JADU_CHANNEL_ID 
-const jaduPostsUrl = process.env.JADU_POSTS_URL 
+const jaduChannelId = process.env.JADU_CHANNEL_ID;
+const jaduPostsUrl = process.env.JADU_POSTS_URL;
 const jaduLastIdFile = "jaduLastSentId.json";
 let jaduLastSentId = 0;
 
@@ -208,26 +216,42 @@ const fetchJaduPosts = async () => {
   }
 };
 
-
 const postJaduBatch = async (posts, batchSize = 5) => {
   const batch = posts.slice(0, batchSize);
   for (let post of batch) {
     const description = post.summary || post.description || post.body || "";
-    const message = `✨ <b>${post.title}</b> ✨\n\n${description}`;
+    const displayTitle = post.author ? `${post.title} - ${post.author}` : post.title;
+    const message = `✨ <b>${displayTitle}</b> ✨\n\n${description}`;
     
     const buttons = [[
       { text: "🔮 Այցելիր Վեբկայք - Jadu.am", url: post.linkUrl || "https://jadu.am" }
     ]];
 
-    // Wrap the book image inside a 600x600 square canvas with a white background
     const jaduPost = { ...post };
-    if (jaduPost.imageUrl) {
-      jaduPost.imageUrl = `https://wsrv.nl/?url=${encodeURIComponent(post.imageUrl)}&w=600&h=600&fit=contain&bg=ffffff&output=jpg`;
+
+    // CATEGORY CONDITIONAL HANDLING:
+    if (post.category === "Գիրք") {
+      // 1. BOOK CATEGORY: Place inside a 600x600 square canvas with a white background
+      if (jaduPost.imageUrl) {
+        jaduPost.imageUrl = `https://wsrv.nl/?url=${encodeURIComponent(post.imageUrl)}&w=600&h=600&fit=contain&bg=ffffff&output=jpg`;
+      }
+    } else {
+      // 2. ARTICLE CATEGORY ("Հոդված"): Use full wide YouTube landscape thumbnail if available
+      const youtubeThumb = getYouTubeThumbnail(post.youtubeUrl);
+      if (youtubeThumb) {
+        jaduPost.imageUrl = youtubeThumb;
+      }
+      // Optional: add a YouTube button if youtubeUrl exists
+      if (post.youtubeUrl) {
+        buttons.unshift([
+          { text: "▶️ Դիտել YouTube-ում", url: post.youtubeUrl }
+        ]);
+      }
     }
 
     const channelSuccess = await sendPost(jaduBot, jaduChannelId, jaduPost, message, buttons);
     if (channelSuccess) {
-      console.log(`✅ [Jadu.am] Post ${post.id} sent to channel`);
+      console.log(`✅ [Jadu.am] Post ${post.id} (${post.category || "General"}) sent to channel`);
       jaduLastSentId = post.id;
       saveJaduLastSentId(jaduLastSentId);
     }
@@ -321,4 +345,3 @@ app.get("/reset", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Unified Bot Server running on port ${PORT}`);
 });
-
