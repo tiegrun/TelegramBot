@@ -65,9 +65,9 @@ const sendPost = async (botInstance, targetId, post, message, buttons) => {
 // ==========================================
 // 1. TIEG.RUN BOT LOGIC
 // ==========================================
-const tiegChannelId = process.env.TIEGRUN_CHANNEL_ID || -1003010205363;
-const tiegGroupId = process.env.TIEGRUN_GROUP_ID || -1003330903443;
-const tiegPostsUrl = process.env.TIEGRUN_POSTS_URL || "https://www.jsonkeeper.com/b/0VPTV";
+const tiegChannelId = process.env.TIEGRUN_CHANNEL_ID 
+const tiegGroupId = process.env.TIEGRUN_GROUP_ID 
+const tiegPostsUrl = process.env.TIEGRUN_POSTS_URL 
 const tiegLastIdFile = "lastSentId.json";
 let tiegLastSentId = 0;
 
@@ -162,8 +162,8 @@ const runTiegCheck = async () => {
 // ==========================================
 // 2. JADU.AM BOT LOGIC
 // ==========================================
-const jaduChannelId = process.env.JADU_CHANNEL_ID || -1004392486557;
-const jaduPostsUrl = process.env.JADU_POSTS_URL || "https://www.jsonkeeper.com/b/OMS0Y";
+const jaduChannelId = process.env.JADU_CHANNEL_ID 
+const jaduPostsUrl = process.env.JADU_POSTS_URL 
 const jaduLastIdFile = "jaduLastSentId.json";
 let jaduLastSentId = 0;
 
