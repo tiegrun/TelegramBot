@@ -1,4 +1,4 @@
-// Unified Server for Two Separate Telegram Bots
+// Unified Server for Three Telegram Bots (Tieg Channel, Jadu Channel, Jadu Support)
 require("dotenv").config();
 const TelegramBotModule = require("node-telegram-bot-api");
 const TelegramBot = TelegramBotModule.TelegramBot || TelegramBotModule.default || TelegramBotModule;
@@ -14,16 +14,83 @@ app.use(express.json());
 // --- Bot Tokens ---
 const tiegToken = process.env.TIEG_BOT_TOKEN;
 const jaduToken = process.env.JADU_BOT_TOKEN;
+const supportJaduToken = process.env.SUPPORT_JADU_BOT_TOKEN;
+const supportJaduGroupId = process.env.SUPPORT_JADU_GROUP_ID;
 
 if (!tiegToken || !jaduToken) {
   console.error("❌ Missing TIEG_BOT_TOKEN or JADU_BOT_TOKEN in .env file!");
   process.exit(1);
 }
 
-// Separate Bot Instances
+// Initialize Channel Bots
 const tiegBot = new TelegramBot(tiegToken, { polling: false });
 const jaduBot = new TelegramBot(jaduToken, { polling: false });
 console.log("🤖 Initialized separate instances for Tieg.run and Jadu.am bots");
+
+// --- Initialize Support Bot (Live Chat) ---
+let supportJaduBot = null;
+if (supportJaduToken && supportJaduGroupId) {
+  supportJaduBot = new TelegramBot(supportJaduToken, { polling: true });
+  console.log("🤖 Initialized Jadu Support Bot (Polling Enabled)");
+
+  const supportMessageMap = new Map();
+
+  // 1. User sends message to Support Bot -> Forward to private Telegram group
+  supportJaduBot.on("message", async (msg) => {
+    if (msg.chat.id.toString() === supportJaduGroupId.toString()) return;
+
+    if (msg.text && msg.text.startsWith("/start")) {
+      await supportJaduBot.sendMessage(
+        msg.chat.id,
+        "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները, և մենք շուտով կպատասխանենք ձեզ:"
+      );
+      return;
+    }
+
+    try {
+      const forwardedMsg = await supportJaduBot.forwardMessage(
+        supportJaduGroupId,
+        msg.chat.id,
+        msg.message_id
+      );
+
+      supportMessageMap.set(forwardedMsg.message_id, msg.chat.id);
+    } catch (err) {
+      console.error("❌ Failed to forward support message:", err.message);
+    }
+  });
+
+  // 2. Admin replies in group -> Send answer back to the user
+  supportJaduBot.on("message", async (msg) => {
+    if (
+      msg.chat.id.toString() !== supportJaduGroupId.toString() ||
+      !msg.reply_to_message
+    ) return;
+
+    const targetUserId =
+      msg.reply_to_message.forward_from?.id ||
+      supportMessageMap.get(msg.reply_to_message.message_id);
+
+    if (targetUserId) {
+      try {
+        await supportJaduBot.sendMessage(targetUserId, msg.text);
+        await supportJaduBot.sendMessage(supportJaduGroupId, "✅ Պատասխանն ուղարկվեց:");
+      } catch (err) {
+        await supportJaduBot.sendMessage(
+          supportJaduGroupId,
+          "❌ Չհաջողվեց ուղարկել (օգտատերը կարող է արգելափակել է բոտը):"
+        );
+      }
+    } else {
+      await supportJaduBot.sendMessage(
+        supportJaduGroupId,
+        "⚠️ Չհաջողվեց գտնել օգտատիրոջ ID-ն:"
+      );
+    }
+  });
+} else {
+  console.warn("⚠️ Support Bot credentials (SUPPORT_JADU_BOT_TOKEN / SUPPORT_JADU_GROUP_ID) missing in .env file.");
+}
 
 // --- Shared Axios Config (Fixes SSL/TLS drops) ---
 const getAxiosConfig = () => ({
@@ -38,7 +105,7 @@ const getAxiosConfig = () => ({
   })
 });
 
-// Helper function to extract YouTube Thumbnail URL from standard YouTube URLs
+// Helper function to extract YouTube Thumbnail URL
 const getYouTubeThumbnail = (youtubeUrl) => {
   if (!youtubeUrl) return null;
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -229,19 +296,15 @@ const postJaduBatch = async (posts, batchSize = 5) => {
 
     const jaduPost = { ...post };
 
-    // CATEGORY CONDITIONAL HANDLING:
     if (post.category === "Գիրք") {
-      // 1. BOOK CATEGORY: Place inside a 600x600 square canvas with a white background
       if (jaduPost.imageUrl) {
         jaduPost.imageUrl = `https://wsrv.nl/?url=${encodeURIComponent(post.imageUrl)}&w=600&h=600&fit=contain&bg=ffffff&output=jpg`;
       }
     } else {
-      // 2. ARTICLE CATEGORY ("Հոդված"): Use full wide YouTube landscape thumbnail if available
       const youtubeThumb = getYouTubeThumbnail(post.youtubeUrl);
       if (youtubeThumb) {
         jaduPost.imageUrl = youtubeThumb;
       }
-      // Optional: add a YouTube button if youtubeUrl exists
       if (post.youtubeUrl) {
         buttons.unshift([
           { text: "▶️ Դիտել YouTube-ում", url: post.youtubeUrl }
@@ -308,13 +371,14 @@ setTimeout(() => {
   runAllChecks().catch(err => console.error("Initial check error:", err));
 }, 5000);
 
-app.get("/", (req, res) => res.send("Dual Telegram Bot Server Running ✅"));
+app.get("/", (req, res) => res.send("Triple Telegram Bot Server Running ✅"));
 
 app.get("/status", (req, res) => {
   res.json({
     status: "running",
     tiegRun: { lastSentId: tiegLastSentId, channelId: tiegChannelId, groupId: tiegGroupId },
     jaduAm: { lastSentId: jaduLastSentId, channelId: jaduChannelId },
+    jaduSupport: { groupId: supportJaduGroupId, active: !!supportJaduBot },
     timestamp: new Date().toISOString()
   });
 });
