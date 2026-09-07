@@ -204,18 +204,23 @@ const fetchJaduPosts = async () => {
 const postJaduBatch = async (posts, batchSize = 5) => {
   const batch = posts.slice(0, batchSize);
   for (let post of batch) {
-    const message = `✨ <b>${post.title}</b> ✨\n\n${post.summary}`;
+    // Hidden zero-width space link forces Telegram to generate a compact preview thumbnail
+    const imagePreview = post.imageUrl ? `<a href="${post.imageUrl}">&#8203;</a>` : "";
+    const description = post.summary || post.description || post.body || "";
+    
+    const message = `${imagePreview}✨ <b>${post.title}</b> ✨\n\n${description}`;
+    
     const buttons = [[
       { text: "🔮 Այցելիր Վեբկայք - Jadu.am", url: post.linkUrl || "https://jadu.am" }
     ]];
 
-    // Create a copy of the post with a resized image (200x300 book ratio)
-    const jaduPost = { ...post };
-    if (jaduPost.imageUrl) {
-      jaduPost.imageUrl = `https://wsrv.nl/?url=${encodeURIComponent(post.imageUrl)}&w=200&h=300&fit=cover&output=jpg`;
-    }
+    // Send as plain message (sendMessage), NOT sendPhoto
+    const channelSuccess = await jaduBot.sendMessage(jaduChannelId, message, {
+      parse_mode: "HTML",
+      disable_web_page_preview: false,
+      reply_markup: { inline_keyboard: buttons }
+    });
 
-    const channelSuccess = await sendPost(jaduBot, jaduChannelId, jaduPost, message, buttons);
     if (channelSuccess) {
       console.log(`✅ [Jadu.am] Post ${post.id} sent to channel`);
       jaduLastSentId = post.id;
