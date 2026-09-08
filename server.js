@@ -251,77 +251,76 @@ const runTiegCheck = async () => {
 };
 
 // ==========================================
-// 2. JADU.AM BOT LOGIC (SUPPORTING MULTIPLE GISTS)
+// 2. JADU.AM BOT LOGIC (MULTI-GIST SUPPORT)
 // ==========================================
 const jaduChannelId = process.env.JADU_CHANNEL_ID;
-const jaduLastIdFile = "jaduLastSentId.json";
-let jaduLastSentId = 0;
+const jaduLastIdsFile = "jaduLastSentIds.json";
 
-// List of Gist URLs for Jadu.am (Books, Feed, Self-Build, Agesta Codes)
-// You can define process.env.JADU_POSTS_URLS as comma-separated URLs in .env or fallback below:
+// Stores per-Gist tracking object: { [gistUrl]: lastSentId }
+let jaduLastSentIds = {};
+
+// Default Fallback Gist URLs if JADU_POSTS_URLS is not set
 const jaduGistUrls = process.env.JADU_POSTS_URLS
   ? process.env.JADU_POSTS_URLS.split(",").map((url) => url.trim())
   : [
-      process.env.JADU_POSTS_URL, // Default/Legacy Gist URL
+      "https://gist.githubusercontent.com/tiegrun/3c6372487a2bcf452597b7ee5640afb8/raw/feed.json",
       "https://gist.githubusercontent.com/tiegrun/b0d34c23239482fb0cf3f2497793b6c6/raw/self-build.json",
-      "https://gist.githubusercontent.com/tiegrun/9bafda754cedcb58b13dd069e374c79c/raw/agesta-codes.json"
+      "https://gist.githubusercontent.com/tiegrun/9bafda754cedcb58b13dd069e374c79c/raw/agesta-codes.json",
+      "https://gist.githubusercontent.com/tiegrun/fd6874122a5aca1df81452ab069553ac/raw/books.json"
     ].filter(Boolean);
 
-const loadJaduLastSentId = () => {
+const loadJaduLastSentIds = () => {
   try {
-    if (fs.existsSync(jaduLastIdFile)) {
-      const parsed = JSON.parse(fs.readFileSync(jaduLastIdFile, "utf8"));
-      jaduLastSentId = parsed.lastId || 0;
-      console.log(`📋 [Jadu.am] Loaded lastSentId: ${jaduLastSentId}`);
+    if (fs.existsSync(jaduLastIdsFile)) {
+      jaduLastSentIds = JSON.parse(fs.readFileSync(jaduLastIdsFile, "utf8"));
+      console.log("📋 [Jadu.am] Loaded per-Gist tracking IDs:", jaduLastSentIds);
     }
   } catch {
-    jaduLastSentId = 0;
+    jaduLastSentIds = {};
   }
 };
 
-const saveJaduLastSentId = (id) => {
+const saveJaduLastSentIds = () => {
   try {
-    fs.writeFileSync(jaduLastIdFile, JSON.stringify({ lastId: id }));
-    console.log(`💾 [Jadu.am] Saved lastSentId: ${id}`);
+    fs.writeFileSync(jaduLastIdsFile, JSON.stringify(jaduLastSentIds, null, 2));
   } catch (err) {
-    console.error("[Jadu.am] Failed to save lastSentId:", err.message);
+    console.error("[Jadu.am] Failed to save lastSentIds:", err.message);
   }
 };
 
-loadJaduLastSentId();
+loadJaduLastSentIds();
 
-const fetchJaduPosts = async () => {
-  let allPosts = [];
+const fetchGistItems = async (url) => {
+  try {
+    const res = await axios.get(url, getAxiosConfig());
+    if (!res.data) return [];
 
-  for (const url of jaduGistUrls) {
-    try {
-      const res = await axios.get(url, getAxiosConfig());
-      if (!res.data) continue;
+    let fetchedData = Array.isArray(res.data) ? res.data : res.data.posts || [];
 
-      let fetchedData = Array.isArray(res.data) ? res.data : res.data.posts || [];
+    const isBooks = url.includes("books");
+    const isAgesta = url.includes("agesta");
+    const isSelfBuild = url.includes("self-build");
 
-      // Normalize items across all Gists (books, feed, self-build, agesta)
-      fetchedData = fetchedData.map((item, index) => {
-        return {
-          id: item.id || parseInt(item.code) || index + 1,
-          active: item.active !== false,
-          title: item.title || (item.code ? `Ագեստայի Կոդ ${item.code}` : "Անվերնագիր"),
-          author: item.author || "",
-          summary: item.summary || item.description || "",
-          category: item.category || (item.code ? "Ագեստայի Թվեր" : "Ինքնակերտում"),
-          imageUrl: item.imageUrl || null,
-          youtubeUrl: item.youtubeUrl || null,
-          linkUrl: item.linkUrl || (item.code ? "https://jadu.am/agesta" : "https://jadu.am")
-        };
-      });
+    return fetchedData.map((item, index) => {
+      const numericId = typeof item.id === "number" ? item.id : parseInt(item.code) || index + 1;
 
-      allPosts = allPosts.concat(fetchedData);
-    } catch (err) {
-      console.error(`[Jadu.am] Failed to fetch Gist (${url}):`, err.message);
-    }
+      return {
+        id: numericId,
+        active: item.active !== false,
+        title: item.title || (item.code ? `Ագեստայի Կոդ ${item.code}` : "Անվերնագիր"),
+        author: item.author || "",
+        summary: item.summary || item.description || item.body || "",
+        category: item.category || (isBooks ? "Գիրք" : isAgesta ? "Ագեստայի Թվեր" : isSelfBuild ? "Ինքնակերտում" : "Հոդված"),
+        imageUrl: item.imageUrl || null,
+        youtubeUrl: item.youtubeUrl || null,
+        linkUrl: item.linkUrl || (isAgesta ? "https://jadu.am/agesta" : isSelfBuild ? "https://jadu.am/self-build" : isBooks ? "https://jadu.am/books" : "https://jadu.am/feed"),
+        sourceGistUrl: url
+      };
+    });
+  } catch (err) {
+    console.error(`[Jadu.am] Failed to fetch Gist (${url}):`, err.message);
+    return [];
   }
-
-  return allPosts;
 };
 
 const postJaduBatch = async (posts, batchSize = 5) => {
@@ -355,9 +354,11 @@ const postJaduBatch = async (posts, batchSize = 5) => {
 
     const channelSuccess = await sendPost(jaduBot, jaduChannelId, jaduPost, message, buttons);
     if (channelSuccess) {
-      console.log(`✅ [Jadu.am] Post ${post.id} (${post.category || "General"}) sent to channel`);
-      jaduLastSentId = post.id;
-      saveJaduLastSentId(jaduLastSentId);
+      console.log(`✅ [Jadu.am] Post ${post.id} (${post.category}) from ${post.sourceGistUrl.split('/').pop()} sent to channel`);
+      
+      // Update per-Gist tracking ID
+      jaduLastSentIds[post.sourceGistUrl] = Math.max(jaduLastSentIds[post.sourceGistUrl] || 0, post.id);
+      saveJaduLastSentIds();
     }
     await new Promise(r => setTimeout(r, 1000));
   }
@@ -369,21 +370,33 @@ const runJaduCheck = async () => {
   if (isJaduPosting) return;
   isJaduPosting = true;
   try {
-    console.log("🔍 [Jadu.am] Fetching posts from all Gists...");
-    let posts = await fetchJaduPosts();
-    let newPosts = posts.filter(isValidPost).filter(p => p.id > jaduLastSentId);
+    let allNewPosts = [];
 
-    if (!newPosts.length) {
-      console.log("✓ [Jadu.am] No new posts");
+    // Loop through each Gist individually using its own tracking ID
+    for (const gistUrl of jaduGistUrls) {
+      const lastSentId = jaduLastSentIds[gistUrl] || 0;
+      const items = await fetchGistItems(gistUrl);
+
+      const newItems = items
+        .filter(isValidPost)
+        .filter((item) => item.id > lastSentId);
+
+      if (newItems.length > 0) {
+        newItems.sort((a, b) => a.id - b.id);
+        allNewPosts = allNewPosts.concat(newItems);
+      }
+    }
+
+    if (!allNewPosts.length) {
+      console.log("✓ [Jadu.am] No new posts across any Gist");
       return;
     }
 
-    newPosts.sort((a, b) => a.id - b.id);
-    console.log(`📬 [Jadu.am] Found ${newPosts.length} new post(s) across Gists`);
+    console.log(`📬 [Jadu.am] Found ${allNewPosts.length} new post(s) total across Gists`);
 
-    while (newPosts.length > 0) {
-      newPosts = await postJaduBatch(newPosts, 5);
-      if (newPosts.length > 0) {
+    while (allNewPosts.length > 0) {
+      allNewPosts = await postJaduBatch(allNewPosts, 5);
+      if (allNewPosts.length > 0) {
         await new Promise(r => setTimeout(r, 3 * 60 * 1000));
       }
     }
@@ -418,7 +431,7 @@ app.get("/status", (req, res) => {
   res.json({
     status: "running",
     tiegRun: { lastSentId: tiegLastSentId, channelId: tiegChannelId, groupId: tiegGroupId },
-    jaduAm: { lastSentId: jaduLastSentId, channelId: jaduChannelId, gistsCount: jaduGistUrls.length },
+    jaduAm: { lastSentIds: jaduLastSentIds, channelId: jaduChannelId, gistsCount: jaduGistUrls.length },
     jaduSupport: { groupId: supportJaduGroupId, active: !!supportJaduBot },
     timestamp: new Date().toISOString()
   });
@@ -436,12 +449,12 @@ app.get("/send", async (req, res) => {
 app.get("/reset", async (req, res) => {
   tiegLastSentId = 0;
   saveTiegLastSentId(0);
-  jaduLastSentId = 0;
-  saveJaduLastSentId(0);
-  console.log("🔄 Reset lastSentId to 0 for both bots");
+  jaduLastSentIds = {};
+  saveJaduLastSentIds();
+  console.log("🔄 Reset tracking IDs to 0 for all bots");
   try {
     await runAllChecks();
-    res.json({ status: "reset_all", tiegLastSentId, jaduLastSentId });
+    res.json({ status: "reset_all", tiegLastSentId, jaduLastSentIds });
   } catch {
     res.status(500).send("ERROR");
   }
