@@ -39,7 +39,7 @@ if (supportJaduToken && supportJaduGroupId) {
   supportJaduBot.on("message", async (msg) => {
     if (msg.chat.id.toString() === supportJaduGroupId.toString()) return;
 
-    // Handle /start commands with deep linking parameters from the website modals & header buttons
+    // Handle /start commands with deep linking parameters
     if (msg.text && msg.text.startsWith("/start")) {
       const isMembership = msg.text.includes("membership");
       const isContact = msg.text.includes("contact");
@@ -251,12 +251,21 @@ const runTiegCheck = async () => {
 };
 
 // ==========================================
-// 2. JADU.AM BOT LOGIC
+// 2. JADU.AM BOT LOGIC (SUPPORTING MULTIPLE GISTS)
 // ==========================================
 const jaduChannelId = process.env.JADU_CHANNEL_ID;
-const jaduPostsUrl = process.env.JADU_POSTS_URL;
 const jaduLastIdFile = "jaduLastSentId.json";
 let jaduLastSentId = 0;
+
+// List of Gist URLs for Jadu.am (Books, Feed, Self-Build, Agesta Codes)
+// You can define process.env.JADU_POSTS_URLS as comma-separated URLs in .env or fallback below:
+const jaduGistUrls = process.env.JADU_POSTS_URLS
+  ? process.env.JADU_POSTS_URLS.split(",").map((url) => url.trim())
+  : [
+      process.env.JADU_POSTS_URL, // Default/Legacy Gist URL
+      "https://gist.githubusercontent.com/tiegrun/b0d34c23239482fb0cf3f2497793b6c6/raw/self-build.json",
+      "https://gist.githubusercontent.com/tiegrun/9bafda754cedcb58b13dd069e374c79c/raw/agesta-codes.json"
+    ].filter(Boolean);
 
 const loadJaduLastSentId = () => {
   try {
@@ -282,20 +291,43 @@ const saveJaduLastSentId = (id) => {
 loadJaduLastSentId();
 
 const fetchJaduPosts = async () => {
-  try {
-    const res = await axios.get(jaduPostsUrl, getAxiosConfig());
-    if (!res.data) return [];
-    return Array.isArray(res.data) ? res.data : res.data.posts || [];
-  } catch (err) {
-    console.error("[Jadu.am] Failed to fetch posts:", err.message);
-    return [];
+  let allPosts = [];
+
+  for (const url of jaduGistUrls) {
+    try {
+      const res = await axios.get(url, getAxiosConfig());
+      if (!res.data) continue;
+
+      let fetchedData = Array.isArray(res.data) ? res.data : res.data.posts || [];
+
+      // Normalize items across all Gists (books, feed, self-build, agesta)
+      fetchedData = fetchedData.map((item, index) => {
+        return {
+          id: item.id || parseInt(item.code) || index + 1,
+          active: item.active !== false,
+          title: item.title || (item.code ? `Ագեստայի Կոդ ${item.code}` : "Անվերնագիր"),
+          author: item.author || "",
+          summary: item.summary || item.description || "",
+          category: item.category || (item.code ? "Ագեստայի Թվեր" : "Ինքնակերտում"),
+          imageUrl: item.imageUrl || null,
+          youtubeUrl: item.youtubeUrl || null,
+          linkUrl: item.linkUrl || (item.code ? "https://jadu.am/agesta" : "https://jadu.am")
+        };
+      });
+
+      allPosts = allPosts.concat(fetchedData);
+    } catch (err) {
+      console.error(`[Jadu.am] Failed to fetch Gist (${url}):`, err.message);
+    }
   }
+
+  return allPosts;
 };
 
 const postJaduBatch = async (posts, batchSize = 5) => {
   const batch = posts.slice(0, batchSize);
   for (let post of batch) {
-    const description = post.summary || post.description || post.body || "";
+    const description = post.summary || post.description || "";
     const displayTitle = post.author ? `${post.title} - ${post.author}` : post.title;
     const message = `✨ <b>${displayTitle}</b> ✨\n\n${description}`;
     
@@ -337,7 +369,7 @@ const runJaduCheck = async () => {
   if (isJaduPosting) return;
   isJaduPosting = true;
   try {
-    console.log("🔍 [Jadu.am] Fetching posts...");
+    console.log("🔍 [Jadu.am] Fetching posts from all Gists...");
     let posts = await fetchJaduPosts();
     let newPosts = posts.filter(isValidPost).filter(p => p.id > jaduLastSentId);
 
@@ -347,7 +379,7 @@ const runJaduCheck = async () => {
     }
 
     newPosts.sort((a, b) => a.id - b.id);
-    console.log(`📬 [Jadu.am] Found ${newPosts.length} new post(s)`);
+    console.log(`📬 [Jadu.am] Found ${newPosts.length} new post(s) across Gists`);
 
     while (newPosts.length > 0) {
       newPosts = await postJaduBatch(newPosts, 5);
@@ -386,7 +418,7 @@ app.get("/status", (req, res) => {
   res.json({
     status: "running",
     tiegRun: { lastSentId: tiegLastSentId, channelId: tiegChannelId, groupId: tiegGroupId },
-    jaduAm: { lastSentId: jaduLastSentId, channelId: jaduChannelId },
+    jaduAm: { lastSentId: jaduLastSentId, channelId: jaduChannelId, gistsCount: jaduGistUrls.length },
     jaduSupport: { groupId: supportJaduGroupId, active: !!supportJaduBot },
     timestamp: new Date().toISOString()
   });
