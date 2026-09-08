@@ -27,11 +27,28 @@ const tiegBot = new TelegramBot(tiegToken, { polling: false });
 const jaduBot = new TelegramBot(jaduToken, { polling: false });
 console.log("🤖 Initialized separate instances for Tieg.run and Jadu.am bots");
 
-// --- Initialize Support Bot (Live Chat) ---
+// --- Initialize Support Bot (Live Chat with Polling Conflict Handler) ---
 let supportJaduBot = null;
 if (supportJaduToken && supportJaduGroupId) {
-  supportJaduBot = new TelegramBot(supportJaduToken, { polling: true });
-  console.log("🤖 Initialized Jadu Support Bot (Polling Enabled)");
+  supportJaduBot = new TelegramBot(supportJaduToken, {
+    polling: {
+      interval: 300,
+      autoStart: true,
+      params: {
+        timeout: 10
+      }
+    }
+  });
+  console.log("🤖 Initialized Jadu Support Bot (Polling Enabled with Auto-Recovery)");
+
+  // Polling error listener to handle temporary 409 conflicts gracefully
+  supportJaduBot.on("polling_error", (error) => {
+    if (error.code === "ETELEGRAM" && error.message.includes("409 Conflict")) {
+      console.warn("⚠️ Support Bot polling conflict: Another instance is briefly active (e.g., Render zero-downtime deploy). Auto-reconnecting...");
+    } else {
+      console.error("❌ Support Bot Polling Error:", error.message);
+    }
+  });
 
   const supportMessageMap = new Map();
 
