@@ -50,6 +50,7 @@ if (supportJaduToken && supportJaduGroupId) {
     }
   });
 
+  
   const supportMessageMap = new Map();
 
   // 1. User sends message to Support Bot -> Forward to private Telegram group
