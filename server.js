@@ -266,7 +266,8 @@ const jaduGistUrls = process.env.JADU_POSTS_URLS
       "https://gist.githubusercontent.com/tiegrun/3c6372487a2bcf452597b7ee5640afb8/raw/feed.json",
       "https://gist.githubusercontent.com/tiegrun/b0d34c23239482fb0cf3f2497793b6c6/raw/self-build.json",
       "https://gist.githubusercontent.com/tiegrun/9bafda754cedcb58b13dd069e374c79c/raw/agesta-codes.json",
-      "https://gist.githubusercontent.com/tiegrun/fd6874122a5aca1df81452ab069553ac/raw/books.json"
+      "https://gist.githubusercontent.com/tiegrun/fd6874122a5aca1df81452ab069553ac/raw/books.json",
+      "https://gist.githubusercontent.com/tiegrun/2cc27b4d43575676cc19cb3041473478/raw/coaches.json"
     ].filter(Boolean);
 
 const loadJaduLastSentIds = () => {
@@ -295,25 +296,35 @@ const fetchGistItems = async (url) => {
     const res = await axios.get(url, getAxiosConfig());
     if (!res.data) return [];
 
-    let fetchedData = Array.isArray(res.data) ? res.data : res.data.posts || [];
+    let fetchedData = Array.isArray(res.data) ? res.data : res.data.posts || res.data.coaches || [];
 
     const isBooks = url.includes("books");
     const isAgesta = url.includes("agesta");
     const isSelfBuild = url.includes("self-build");
+    const isCoaches = url.includes("coaches");
 
     return fetchedData.map((item, index) => {
       const numericId = typeof item.id === "number" ? item.id : parseInt(item.code) || index + 1;
 
+      // Extract title/author or coach name
+      const title = item.title || item.name || (item.code ? `Ագեստայի Կոդ ${item.code}` : "Անվերնագիր");
+      const author = item.author || (isCoaches ? `${item.role || ""} • ${item.specialty || ""}` : "");
+      
+      // Extract summary / description / keyConcept
+      const summaryText = isCoaches 
+        ? `${item.description || ""}\n\n💡 ${item.keyConcept || ""}`.trim()
+        : item.summary || item.description || item.body || "";
+
       return {
         id: numericId,
         active: item.active !== false,
-        title: item.title || (item.code ? `Ագեստայի Կոդ ${item.code}` : "Անվերնագիր"),
-        author: item.author || "",
-        summary: item.summary || item.description || item.body || "",
-        category: item.category || (isBooks ? "Գիրք" : isAgesta ? "Ագեստայի Թվեր" : isSelfBuild ? "Ինքնակերտում" : "Հոդված"),
-        imageUrl: item.imageUrl || null,
+        title: title,
+        author: author,
+        summary: summaryText,
+        category: item.category || (isBooks ? "Գիրք" : isAgesta ? "Ագեստայի Թվեր" : isSelfBuild ? "Ինքնակերտում" : isCoaches ? "Ուսուցիչներ" : "Հոդված"),
+        imageUrl: item.imageUrl || item.avatarUrl || null,
         youtubeUrl: item.youtubeUrl || null,
-        linkUrl: item.linkUrl || (isAgesta ? "https://jadu.am/agesta" : isSelfBuild ? "https://jadu.am/self-build" : isBooks ? "https://jadu.am/books" : "https://jadu.am/feed"),
+        linkUrl: item.linkUrl || (isAgesta ? "https://jadu.am/agesta" : isSelfBuild ? "https://jadu.am/self-build" : isBooks ? "https://jadu.am/books" : isCoaches ? "https://jadu.am/coaches" : "https://jadu.am/feed"),
         sourceGistUrl: url
       };
     });
