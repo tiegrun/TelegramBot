@@ -50,7 +50,6 @@ if (supportJaduToken && supportJaduGroupId) {
     }
   });
 
-  
   const supportMessageMap = new Map();
 
   // 1. User sends message to Support Bot -> Forward to private Telegram group
@@ -62,7 +61,7 @@ if (supportJaduToken && supportJaduGroupId) {
       const isMembership = msg.text.includes("membership");
       const isContact = msg.text.includes("contact");
 
-      let greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհրդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
+      let greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
 
       if (isMembership) {
         greetingMessage = "Բարև ձեզ! 🔮\nԴուք ցանկանում եք ձեռք բերել «Մուտքի արտոնագիր»: Գրեք ձեր տվյալները կամ հարցը, և մենք ձեզ կուղարկենք մանրամասները:";
@@ -143,9 +142,10 @@ const getYouTubeThumbnail = (youtubeUrl) => {
   return null;
 };
 
+// Strict check: active MUST be explicitly true
 const isValidPost = (post) =>
   post && 
-  post.active !== false && 
+  post.active === true && 
   typeof post.id === "number" && 
   post.title && 
   (post.summary || post.body || post.description);
@@ -207,7 +207,8 @@ const fetchTiegPosts = async () => {
   try {
     const res = await axios.get(tiegPostsUrl, getAxiosConfig());
     if (!res.data) return [];
-    return Array.isArray(res.data) ? res.data : res.data.posts || [];
+    const list = Array.isArray(res.data) ? res.data : res.data.posts || [];
+    return list.filter((item) => item.active === true);
   } catch (err) {
     console.error("[Tieg.run] Failed to fetch posts:", err.message);
     return [];
@@ -316,6 +317,9 @@ const fetchGistItems = async (url) => {
 
     let fetchedData = Array.isArray(res.data) ? res.data : res.data.posts || res.data.coaches || [];
 
+    // Filter strictly for active items
+    fetchedData = fetchedData.filter((item) => item.active === true);
+
     const isBooks = url.includes("books");
     const isAgesta = url.includes("agesta");
     const isSelfBuild = url.includes("self-build");
@@ -335,7 +339,7 @@ const fetchGistItems = async (url) => {
 
       return {
         id: numericId,
-        active: item.active !== false,
+        active: true,
         title: title,
         author: author,
         summary: summaryText,
@@ -492,4 +496,3 @@ app.get("/reset", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Unified Bot Server running on port ${PORT}`);
 });
-
