@@ -56,21 +56,28 @@ if (supportJaduToken && supportJaduGroupId) {
   supportJaduBot.on("message", async (msg) => {
     if (msg.chat.id.toString() === supportJaduGroupId.toString()) return;
 
-    // Handle /start commands with deep linking parameters
-    if (msg.text && msg.text.startsWith("/start")) {
-      const isMembership = msg.text.includes("membership");
-      const isContact = msg.text.includes("contact");
+    // Handle /start commands with deep linking parameters & direct text secret words
+    if (msg.text) {
+      const text = msg.text.trim();
+      const isSecretWord = text.includes("ԱՐԵՎԱԾԱԳ") || text.includes("AREVATSAG") || text.includes("%D4%B1%D5%90%D4%B5%D5%8E%D4%B1%D5%90%D4%B1%D5%A3");
 
-      let greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
+      if (text.startsWith("/start") || isSecretWord) {
+        const isMembership = text.includes("membership");
+        const isContact = text.includes("contact");
 
-      if (isMembership) {
-        greetingMessage = "Բարև ձեզ! 🔮\nԴուք ցանկանում եք ձեռք բերել «Մուտքի արտոնագիր»: Գրեք ձեր տվյալները կամ հարցը, և մենք ձեզ կուղարկենք մանրամասները:";
-      } else if (isContact) {
-        greetingMessage = "Բարև ձեզ! 💬\nՇնորհակալություն կապ հաստատելու համար: Գրեք ձեր հարցը, և մեր թիմը շուտով կպատասխանի ձեզ:";
+        let greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
+
+        if (isSecretWord) {
+          greetingMessage = "✨ Շնորհավորում ենք: Դուք բացահայտեցիք «Թաքուն Անկյունի» գաղտնիքը:\n\n🔮 Ահա ձեր բացառիկ նյութերը:\nԳրեք ձեր հարցը կամ ցանկությունը այստեղ, և մենք կտրամադրենք ձեզ անհատական տեղեկատվությունը:";
+        } else if (isMembership) {
+          greetingMessage = "Բարև ձեզ! 🔮\nԴուք ցանկանում եք ձեռք բերել «Մուտքի արտոնագիր»: Գրեք ձեր տվյալները կամ հարցը, և մենք ձեզ կուղարկենք մանրամասները:";
+        } else if (isContact) {
+          greetingMessage = "Բարև ձեզ! 💬\nՇնորհակալություն կապ հաստատելու համար: Գրեք ձեր հարցը, և մեր թիմը շուտով կպատասխանի ձեզ:";
+        }
+
+        await supportJaduBot.sendMessage(msg.chat.id, greetingMessage);
+        return;
       }
-
-      await supportJaduBot.sendMessage(msg.chat.id, greetingMessage);
-      return;
     }
 
     try {
