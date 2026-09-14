@@ -41,10 +41,9 @@ if (supportJaduToken && supportJaduGroupId) {
   });
   console.log("🤖 Initialized Jadu Support Bot (Polling Enabled with Auto-Recovery)");
 
-  // Polling error listener to handle temporary 409 conflicts gracefully
   supportJaduBot.on("polling_error", (error) => {
     if (error.code === "ETELEGRAM" && error.message.includes("409 Conflict")) {
-      console.warn("⚠️ Support Bot polling conflict: Another instance is briefly active (e.g., Render zero-downtime deploy). Auto-reconnecting...");
+      console.warn("⚠️ Support Bot polling conflict: Another instance is briefly active. Auto-reconnecting...");
     } else {
       console.error("❌ Support Bot Polling Error:", error.message);
     }
@@ -61,7 +60,7 @@ if (supportJaduToken && supportJaduGroupId) {
     // 1. ADMIN REPLIES FROM INSIDE THE PRIVATE TELEGRAM GROUP
     // ---------------------------------------------------------------------
     if (incomingChatId === adminGroupId) {
-      if (!msg.reply_to_message) return; // Ignore messages in group that are not direct replies
+      if (!msg.reply_to_message) return;
 
       const targetUserId =
         msg.reply_to_message.forward_from?.id ||
@@ -111,22 +110,31 @@ if (supportJaduToken && supportJaduGroupId) {
       text.startsWith("/start") && 
       (text.includes("ԱՐԵՎԱԾԱԳ") || text.includes("AREVATSAG") || text.includes("%D4%B1%D5%90%D4%B5%D5%8E%D4%B1%D5%90%D4%B1%D5%A3"));
 
-    // Case A: Deep link from Secret Corner -> Immediate Bot Greeting asking for Password
-    if (isSecretStart) {
-      await supportJaduBot.sendMessage(
-        msg.chat.id, 
-        "Բարև ձեզ! 🔮\nԲարի գալուստ Ջադույի համակարգ:\n\nԴուք անցել եք «Թաքուն Անկյուն» էջից: Խնդրում ենք մուտքագրել գաղտնաբառը՝ հատուկ նյութերին մուտք ստանալու համար:",
-        { parse_mode: "HTML" }
-      );
+    // Case A: Deep link or First Click on /start -> Send Greeting Immediately
+    if (text.startsWith("/start")) {
+      const isMembership = text.includes("membership");
+      const isContact = text.includes("contact");
+
+      let greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
+
+      if (isSecretStart) {
+        greetingMessage = "Բարև ձեզ! 🔮\nԲարի գալուստ Ջադույի համակարգ:\n\nԴուք անցել եք «Թաքուն Անկյուն» էջից: Խնդրում ենք մուտքագրել գաղտնաբառը՝ հատուկ նյութերին մուտք ստանալու համար:";
+      } else if (isMembership) {
+        greetingMessage = "Բարև ձեզ! 🔮\nԴուք ցանկանում եք ձեռք բերել «Մուտքի արտոնագիր»: Գրեք ձեր տվյալները կամ հարցը, և մենք ձեզ կուղարկենք մանրամասները:";
+      } else if (isContact) {
+        greetingMessage = "Բարև ձեզ! 💬\nՇնորհակալություն կապ հաստատելու համար: Գրեք ձեր հարցը, և մեր թիմը շուտով կպատասխանի ձեզ:";
+      }
+
+      await supportJaduBot.sendMessage(msg.chat.id, greetingMessage, { parse_mode: "HTML" });
     } 
-    // Case B: User types Secret Password -> Single Clean Confirmation
+    // Case B: User types Secret Password -> Secret Confirmation
     else if (isSecretWord) {
-      const combinedSecretMessage = 
+      const secretMessage = 
         "✨ <b>Ճիշտ Գաղտնաբառ:</b>\n\n" +
         "Շնորհավորում ենք: Դուք հաջողությամբ բացահայտեցիք «Թաքուն Անկյունի» գաղտնիքը:\n\n" +
         "🔮 Գրեք ձեր հարցը կամ ցանկությունը այստեղ, և մենք կտրամադրենք ձեզ անհատական տեղեկատվությունը:";
 
-      await supportJaduBot.sendMessage(msg.chat.id, combinedSecretMessage, { parse_mode: "HTML" });
+      await supportJaduBot.sendMessage(msg.chat.id, secretMessage, { parse_mode: "HTML" });
 
       try {
         const forwardedMsg = await supportJaduBot.forwardMessage(
@@ -139,22 +147,7 @@ if (supportJaduToken && supportJaduGroupId) {
         console.error("❌ Failed to forward secret alert to group:", err.message);
       }
     } 
-    // Case C: Standard /start Command (Direct website buttons or standard start)
-    else if (text.startsWith("/start")) {
-      const isMembership = text.includes("membership");
-      const isContact = text.includes("contact");
-
-      let greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
-
-      if (isMembership) {
-        greetingMessage = "Բարև ձեզ! 🔮\nԴուք ցանկանում եք ձեռք բերել «Մուտքի արտոնագիր»: Գրեք ձեր տվյալները կամ հարցը, և մենք ձեզ կուղարկենք մանրամասները:";
-      } else if (isContact) {
-        greetingMessage = "Բարև ձեզ! 💬\nՇնորհակալություն կապ հաստատելու համար: Գրեք ձեր հարցը, և մեր թիմը շուտով կպատասխանի ձեզ:";
-      }
-
-      await supportJaduBot.sendMessage(msg.chat.id, greetingMessage);
-    } 
-    // Case D: ALL User Questions / Text Messages -> Forward directly to Telegram Admin Group
+    // Case C: ALL User Questions / Text Messages -> Forward to Admin Group
     else {
       try {
         const forwardedMsg = await supportJaduBot.forwardMessage(
