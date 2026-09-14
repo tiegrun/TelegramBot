@@ -56,20 +56,38 @@ if (supportJaduToken && supportJaduGroupId) {
   supportJaduBot.on("message", async (msg) => {
     if (msg.chat.id.toString() === supportJaduGroupId.toString()) return;
 
-    // Handle /start commands with deep linking parameters & direct text secret words
     if (msg.text) {
       const text = msg.text.trim();
-      const isSecretWord = text.includes("ԱՐԵՎԱԾԱԳ") || text.includes("AREVATSAG") || text.includes("%D4%B1%D5%90%D4%B5%D5%8E%D4%B1%D5%90%D4%B1%D5%A3");
+      const isSecretLink = text.includes("ԱՐԵՎԱԾԱԳ") || text.includes("AREVATSAG") || text.includes("%D4%B1%D5%90%D4%B5%D5%8E%D4%B1%D5%90%D4%B1%D5%A3");
 
-      if (text.startsWith("/start") || isSecretWord) {
+      // A) User tapped START after clicking the Secret Corner link -> Prompt for password
+      if (text.startsWith("/start") && isSecretLink) {
+        await supportJaduBot.sendMessage(
+          msg.chat.id, 
+          "🔮 <b>Թաքուն Անկյուն</b>\n\nԴուք մուտք եք գործել հատուկ համակարգ: Խնդրում ենք մուտքագրել գաղտնաբառը՝ մուտք ստանալու համար:",
+          { parse_mode: "HTML" }
+        );
+        return;
+      }
+
+      // B) User types the secret password in chat
+      if (text === "ԱՐԵՎԱԾԱԳ" || text.toUpperCase() === "AREVATSAG") {
+        await supportJaduBot.sendMessage(
+          msg.chat.id, 
+          "✨ <b>Ճիշտ Գաղտնաբառ:</b>\n\nՇնորհավորում ենք: Դուք հաջողությամբ բացահայտեցիք «Թաքուն Անկյունի» գաղտնիքը:\n\n🔮 Գրեք ձեր հարցը կամ ցանկությունը այստեղ, և մենք կտրամադրենք ձեզ անհատական տեղեկատվությունը:",
+          { parse_mode: "HTML" }
+        );
+        return;
+      }
+
+      // C) Standard /start link commands
+      if (text.startsWith("/start")) {
         const isMembership = text.includes("membership");
         const isContact = text.includes("contact");
 
         let greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
 
-        if (isSecretWord) {
-          greetingMessage = "✨ Շնորհավորում ենք: Դուք բացահայտեցիք «Թաքուն Անկյունի» գաղտնիքը:\n\n🔮 Ահա ձեր բացառիկ նյութերը:\nԳրեք ձեր հարցը կամ ցանկությունը այստեղ, և մենք կտրամադրենք ձեզ անհատական տեղեկատվությունը:";
-        } else if (isMembership) {
+        if (isMembership) {
           greetingMessage = "Բարև ձեզ! 🔮\nԴուք ցանկանում եք ձեռք բերել «Մուտքի արտոնագիր»: Գրեք ձեր տվյալները կամ հարցը, և մենք ձեզ կուղարկենք մանրամասները:";
         } else if (isContact) {
           greetingMessage = "Բարև ձեզ! 💬\nՇնորհակալություն կապ հաստատելու համար: Գրեք ձեր հարցը, և մեր թիմը շուտով կպատասխանի ձեզ:";
@@ -282,10 +300,8 @@ const runTiegCheck = async () => {
 const jaduChannelId = process.env.JADU_CHANNEL_ID;
 const jaduLastIdsFile = "jaduLastSentIds.json";
 
-// Stores per-Gist tracking object: { [gistUrl]: lastSentId }
 let jaduLastSentIds = {};
 
-// Default Fallback Gist URLs if JADU_POSTS_URLS is not set
 const jaduGistUrls = process.env.JADU_POSTS_URLS
   ? process.env.JADU_POSTS_URLS.split(",").map((url) => url.trim())
   : [
@@ -324,7 +340,6 @@ const fetchGistItems = async (url) => {
 
     let fetchedData = Array.isArray(res.data) ? res.data : res.data.posts || res.data.coaches || [];
 
-    // Filter strictly for active items
     fetchedData = fetchedData.filter((item) => item.active === true);
 
     const isBooks = url.includes("books");
@@ -335,11 +350,9 @@ const fetchGistItems = async (url) => {
     return fetchedData.map((item, index) => {
       const numericId = typeof item.id === "number" ? item.id : parseInt(item.code) || index + 1;
 
-      // Extract title/author or coach name
       const title = item.title || item.name || (item.code ? `Ագեստայի Կոդ ${item.code}` : "Անվերնագիր");
       const author = item.author || (isCoaches ? `${item.role || ""} • ${item.specialty || ""}` : "");
       
-      // Extract summary / description / keyConcept
       const summaryText = isCoaches 
         ? `${item.description || ""}\n\n💡 ${item.keyConcept || ""}`.trim()
         : item.summary || item.description || item.body || "";
@@ -396,7 +409,6 @@ const postJaduBatch = async (posts, batchSize = 5) => {
     if (channelSuccess) {
       console.log(`✅ [Jadu.am] Post ${post.id} (${post.category}) from ${post.sourceGistUrl.split('/').pop()} sent to channel`);
       
-      // Update per-Gist tracking ID
       jaduLastSentIds[post.sourceGistUrl] = Math.max(jaduLastSentIds[post.sourceGistUrl] || 0, post.id);
       saveJaduLastSentIds();
     }
@@ -412,7 +424,6 @@ const runJaduCheck = async () => {
   try {
     let allNewPosts = [];
 
-    // Loop through each Gist individually using its own tracking ID
     for (const gistUrl of jaduGistUrls) {
       const lastSentId = jaduLastSentIds[gistUrl] || 0;
       const items = await fetchGistItems(gistUrl);
