@@ -44,7 +44,7 @@ if (supportJaduToken && supportJaduGroupId) {
   // Polling error listener to handle temporary 409 conflicts gracefully
   supportJaduBot.on("polling_error", (error) => {
     if (error.code === "ETELEGRAM" && error.message.includes("409 Conflict")) {
-      console.warn("⚠️ Support Bot polling conflict: Another instance is briefly active (e.g., Render zero-downtime deploy). Auto-reconnecting...");
+      console.warn("⚠️ Support Bot polling conflict: Another instance is briefly active. Auto-reconnecting...");
     } else {
       console.error("❌ Support Bot Polling Error:", error.message);
     }
@@ -52,14 +52,101 @@ if (supportJaduToken && supportJaduGroupId) {
 
   const supportMessageMap = new Map();
 
-  // 1. User sends message to Support Bot -> Forward to private Telegram group
+  // SINGLE UNIFIED MESSAGE HANDLER (Prevents handler conflicts)
   supportJaduBot.on("message", async (msg) => {
-    if (msg.chat.id.toString() === supportJaduGroupId.toString()) return;
+    const incomingChatId = String(msg.chat.id);
+    const adminGroupId = String(supportJaduGroupId);
 
-    // Handle /start commands with deep linking parameters
-    if (msg.text && msg.text.startsWith("/start")) {
-      const isMembership = msg.text.includes("membership");
-      const isContact = msg.text.includes("contact");
+    // ---------------------------------------------------------------------
+    // 1. ADMIN REPLIES FROM INSIDE THE PRIVATE TELEGRAM GROUP
+    // ---------------------------------------------------------------------
+    if (incomingChatId === adminGroupId) {
+      if (!msg.reply_to_message) return; // Only trigger on direct replies
+
+      const targetUserId =
+        msg.reply_to_message.forward_from?.id ||
+        supportMessageMap.get(msg.reply_to_message.message_id);
+
+      if (targetUserId) {
+        try {
+          if (msg.text) {
+            await supportJaduBot.sendMessage(targetUserId, msg.text);
+          } else if (msg.photo) {
+            const photoId = msg.photo[msg.photo.length - 1].file_id;
+            await supportJaduBot.sendPhoto(targetUserId, photoId, { caption: msg.caption || "" });
+          } else if (msg.voice) {
+            await supportJaduBot.sendVoice(targetUserId, msg.voice.file_id);
+          } else if (msg.sticker) {
+            await supportJaduBot.sendSticker(targetUserId, msg.sticker.file_id);
+          }
+          await supportJaduBot.sendMessage(adminGroupId, "✅ Պատասխանն ուղարկվեց:");
+        } catch (err) {
+          console.error("❌ Admin reply error:", err.message);
+          await supportJaduBot.sendMessage(
+            adminGroupId,
+            "❌ Չհաջողվեց ուղարկել (օգտատերը կարող է արգելափակել է բոտը):"
+          );
+        }
+      } else {
+        await supportJaduBot.sendMessage(
+          adminGroupId,
+          "⚠️ Չհաջողվեց գտնել օգտատիրոջ ID-ն (սերվերը կարող է վերագործարկվել է):"
+        );
+      }
+      return;
+    }
+
+    // ---------------------------------------------------------------------
+    // 2. USER MESSAGES TO THE SUPPORT BOT
+    // ---------------------------------------------------------------------
+    const text = msg.text ? msg.text.trim() : "";
+    const decodedText = text ? decodeURIComponent(text) : "";
+
+    const isSecretWord = 
+      text === "ԱՐԵՎԱԾԱԳ" || 
+      text.toUpperCase() === "AREVATSAG" || 
+      decodedText.includes("ԱՐԵՎԱԾԱԳ");
+
+    const isSecretStart = 
+      text.startsWith("/start") && 
+      (text.includes("ԱՐԵՎԱԾԱԳ") || text.includes("AREVATSAG") || text.includes("%D4%B1%D5%90%D4%B5%D5%8E%D4%B1%D5%90%D4%B1%D5%A3"));
+
+    // Case A: User clicked Secret Corner deep link -> Request Password
+    if (isSecretStart) {
+      await supportJaduBot.sendMessage(
+        msg.chat.id, 
+        "🔮 <b>Թաքուն Անկյուն</b>\n\nԴուք մուտք եք գործել հատուկ համակարգ: Խնդրում ենք մուտքագրել գաղտնաբառը՝ մուտք ստանալու համար:",
+        { parse_mode: "HTML" }
+      );
+      return;
+    }
+
+    // Case B: User typed the correct secret password
+    if (isSecretWord) {
+      await supportJaduBot.sendMessage(
+        msg.chat.id, 
+        "✨ <b>Ճիշտ Գաղտնաբառ:</b>\n\nՇնորհավորում ենք: Դուք հաջողությամբ բացահայտեցիք «Թաքուն Անկյունի» գաղտնիքը:\n\n🔮 Գրեք ձեր հարցը կամ ցանկությունը այստեղ, և մենք կտրամադրենք ձեզ անհատական տեղեկատվությունը:",
+        { parse_mode: "HTML" }
+      );
+
+      // Forward alert to Admin Group
+      try {
+        const forwardedMsg = await supportJaduBot.forwardMessage(
+          supportJaduGroupId,
+          msg.chat.id,
+          msg.message_id
+        );
+        supportMessageMap.set(forwardedMsg.message_id, msg.chat.id);
+      } catch (err) {
+        console.error("❌ Failed to forward secret alert:", err.message);
+      }
+      return;
+    }
+
+    // Case C: Standard /start parameters
+    if (text.startsWith("/start")) {
+      const isMembership = text.includes("membership");
+      const isContact = text.includes("contact");
 
       let greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
 
@@ -73,6 +160,7 @@ if (supportJaduToken && supportJaduGroupId) {
       return;
     }
 
+    // Case D: ALL regular messages & questions -> Forward to Admin Group
     try {
       const forwardedMsg = await supportJaduBot.forwardMessage(
         supportJaduGroupId,
@@ -81,39 +169,12 @@ if (supportJaduToken && supportJaduGroupId) {
       );
 
       supportMessageMap.set(forwardedMsg.message_id, msg.chat.id);
+      console.log(`💬 Support message from ${msg.chat.id} forwarded to group`);
     } catch (err) {
-      console.error("❌ Failed to forward support message:", err.message);
+      console.error(`❌ Forwarding failed from user ${msg.chat.id}:`, err.message);
     }
   });
 
-  // 2. Admin replies in group -> Send answer back to the user
-  supportJaduBot.on("message", async (msg) => {
-    if (
-      msg.chat.id.toString() !== supportJaduGroupId.toString() ||
-      !msg.reply_to_message
-    ) return;
-
-    const targetUserId =
-      msg.reply_to_message.forward_from?.id ||
-      supportMessageMap.get(msg.reply_to_message.message_id);
-
-    if (targetUserId) {
-      try {
-        await supportJaduBot.sendMessage(targetUserId, msg.text);
-        await supportJaduBot.sendMessage(supportJaduGroupId, "✅ Պատասխանն ուղարկվեց:");
-      } catch (err) {
-        await supportJaduBot.sendMessage(
-          supportJaduGroupId,
-          "❌ Չհաջողվեց ուղարկել (օգտատերը կարող է արգելափակել է բոտը):"
-        );
-      }
-    } else {
-      await supportJaduBot.sendMessage(
-        supportJaduGroupId,
-        "⚠️ Չհաջողվեց գտնել օգտատիրոջ ID-ն:"
-      );
-    }
-  });
 } else {
   console.warn("⚠️ Support Bot credentials (SUPPORT_JADU_BOT_TOKEN / SUPPORT_JADU_GROUP_ID) missing in .env file.");
 }
@@ -275,10 +336,8 @@ const runTiegCheck = async () => {
 const jaduChannelId = process.env.JADU_CHANNEL_ID;
 const jaduLastIdsFile = "jaduLastSentIds.json";
 
-// Stores per-Gist tracking object: { [gistUrl]: lastSentId }
 let jaduLastSentIds = {};
 
-// Default Fallback Gist URLs if JADU_POSTS_URLS is not set
 const jaduGistUrls = process.env.JADU_POSTS_URLS
   ? process.env.JADU_POSTS_URLS.split(",").map((url) => url.trim())
   : [
@@ -317,7 +376,6 @@ const fetchGistItems = async (url) => {
 
     let fetchedData = Array.isArray(res.data) ? res.data : res.data.posts || res.data.coaches || [];
 
-    // Filter strictly for active items
     fetchedData = fetchedData.filter((item) => item.active === true);
 
     const isBooks = url.includes("books");
@@ -328,11 +386,9 @@ const fetchGistItems = async (url) => {
     return fetchedData.map((item, index) => {
       const numericId = typeof item.id === "number" ? item.id : parseInt(item.code) || index + 1;
 
-      // Extract title/author or coach name
       const title = item.title || item.name || (item.code ? `Ագեստայի Կոդ ${item.code}` : "Անվերնագիր");
       const author = item.author || (isCoaches ? `${item.role || ""} • ${item.specialty || ""}` : "");
       
-      // Extract summary / description / keyConcept
       const summaryText = isCoaches 
         ? `${item.description || ""}\n\n💡 ${item.keyConcept || ""}`.trim()
         : item.summary || item.description || item.body || "";
@@ -389,7 +445,6 @@ const postJaduBatch = async (posts, batchSize = 5) => {
     if (channelSuccess) {
       console.log(`✅ [Jadu.am] Post ${post.id} (${post.category}) from ${post.sourceGistUrl.split('/').pop()} sent to channel`);
       
-      // Update per-Gist tracking ID
       jaduLastSentIds[post.sourceGistUrl] = Math.max(jaduLastSentIds[post.sourceGistUrl] || 0, post.id);
       saveJaduLastSentIds();
     }
@@ -405,7 +460,6 @@ const runJaduCheck = async () => {
   try {
     let allNewPosts = [];
 
-    // Loop through each Gist individually using its own tracking ID
     for (const gistUrl of jaduGistUrls) {
       const lastSentId = jaduLastSentIds[gistUrl] || 0;
       const items = await fetchGistItems(gistUrl);
