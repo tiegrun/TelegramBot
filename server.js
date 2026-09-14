@@ -52,52 +52,98 @@ if (supportJaduToken && supportJaduGroupId) {
 
   const supportMessageMap = new Map();
 
-  // 1. User sends message to Support Bot -> Forward to private Telegram group
+  // Unified Support Message Handler: Handles Commands, Password Checks & Forwarding
   supportJaduBot.on("message", async (msg) => {
-    if (msg.chat.id.toString() === supportJaduGroupId.toString()) return;
+    // --- 1. ADMIN REPLY IN GROUP -> SEND ANSWER BACK TO USER ---
+    if (msg.chat.id.toString() === supportJaduGroupId.toString()) {
+      if (!msg.reply_to_message) return;
 
-    if (msg.text) {
-      const text = msg.text.trim();
-      const isSecretLink = text.includes("ԱՐԵՎԱԾԱԳ") || text.includes("AREVATSAG") || text.includes("%D4%B1%D5%90%D4%B5%D5%8E%D4%B1%D5%90%D4%B1%D5%A3");
+      const targetUserId =
+        msg.reply_to_message.forward_from?.id ||
+        supportMessageMap.get(msg.reply_to_message.message_id);
 
-      // A) User tapped START after clicking the Secret Corner link -> Prompt for password
-      if (text.startsWith("/start") && isSecretLink) {
-        await supportJaduBot.sendMessage(
-          msg.chat.id, 
-          "🔮 <b>Թաքուն Անկյուն</b>\n\nԴուք մուտք եք գործել հատուկ համակարգ: Խնդրում ենք մուտքագրել գաղտնաբառը՝ մուտք ստանալու համար:",
-          { parse_mode: "HTML" }
-        );
-        return;
-      }
-
-      // B) User types the secret password in chat
-      if (text === "ԱՐԵՎԱԾԱԳ" || text.toUpperCase() === "AREVATSAG") {
-        await supportJaduBot.sendMessage(
-          msg.chat.id, 
-          "✨ <b>Ճիշտ Գաղտնաբառ:</b>\n\nՇնորհավորում ենք: Դուք հաջողությամբ բացահայտեցիք «Թաքուն Անկյունի» գաղտնիքը:\n\n🔮 Գրեք ձեր հարցը կամ ցանկությունը այստեղ, և մենք կտրամադրենք ձեզ անհատական տեղեկատվությունը:",
-          { parse_mode: "HTML" }
-        );
-        return;
-      }
-
-      // C) Standard /start link commands
-      if (text.startsWith("/start")) {
-        const isMembership = text.includes("membership");
-        const isContact = text.includes("contact");
-
-        let greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
-
-        if (isMembership) {
-          greetingMessage = "Բարև ձեզ! 🔮\nԴուք ցանկանում եք ձեռք բերել «Մուտքի արտոնագիր»: Գրեք ձեր տվյալները կամ հարցը, և մենք ձեզ կուղարկենք մանրամասները:";
-        } else if (isContact) {
-          greetingMessage = "Բարև ձեզ! 💬\nՇնորհակալություն կապ հաստատելու համար: Գրեք ձեր հարցը, և մեր թիմը շուտով կպատասխանի ձեզ:";
+      if (targetUserId) {
+        try {
+          await supportJaduBot.sendMessage(targetUserId, msg.text);
+          await supportJaduBot.sendMessage(supportJaduGroupId, "✅ Պատասխանն ուղարկվեց:");
+        } catch (err) {
+          await supportJaduBot.sendMessage(
+            supportJaduGroupId,
+            "❌ Չհաջողվեց ուղարկել (օգտատերը կարող է արգելափակել է բոտը):"
+          );
         }
-
-        await supportJaduBot.sendMessage(msg.chat.id, greetingMessage);
-        return;
+      } else {
+        await supportJaduBot.sendMessage(
+          supportJaduGroupId,
+          "⚠️ Չհաջողվեց գտնել օգտատիրոջ ID-ն:"
+        );
       }
+      return;
     }
 
+    // --- 2. USER MESSAGES TO BOT ---
+    const text = msg.text ? msg.text.trim() : "";
+    const decodedText = decodeURIComponent(text);
+
+    const isSecretWord = 
+      text === "ԱՐԵՎԱԾԱԳ" || 
+      text.toUpperCase() === "AREVATSAG" || 
+      decodedText.includes("ԱՐԵՎԱԾԱԳ");
+
+    const isSecretStart = 
+      text.startsWith("/start") && 
+      (text.includes("ԱՐԵՎԱԾԱԳ") || text.includes("AREVATSAG") || text.includes("%D4%B1%D5%90%D4%B5%D5%8E%D4%B1%D5%90%D4%B1%D5%A3"));
+
+    // Case A: User Taps /start from Secret Corner Deep Link -> Prompt for Password
+    if (isSecretStart) {
+      await supportJaduBot.sendMessage(
+        msg.chat.id, 
+        "🔮 <b>Թաքուն Անկյուն</b>\n\nԴուք մուտք եք գործել հատուկ համակարգ: Խնդրում ենք մուտքագրել գաղտնաբառը՝ մուտք ստանալու համար:",
+        { parse_mode: "HTML" }
+      );
+      return;
+    }
+
+    // Case B: User Types Secret Password -> Deliver Secret & Forward Notification
+    if (isSecretWord) {
+      await supportJaduBot.sendMessage(
+        msg.chat.id, 
+        "✨ <b>Ճիշտ Գաղտնաբառ:</b>\n\nՇնորհավորում ենք: Դուք հաջողությամբ բացահայտեցիք «Թաքուն Անկյունի» գաղտնիքը:\n\n🔮 Գրեք ձեր հարցը կամ ցանկությունը այստեղ, և մենք կտրամադրենք ձեզ անհատական տեղեկատվությունը:",
+        { parse_mode: "HTML" }
+      );
+
+      // Forward alert to Group so admin knows user entered correct password
+      try {
+        const forwardedMsg = await supportJaduBot.forwardMessage(
+          supportJaduGroupId,
+          msg.chat.id,
+          msg.message_id
+        );
+        supportMessageMap.set(forwardedMsg.message_id, msg.chat.id);
+      } catch (err) {
+        console.error("❌ Failed to forward secret entry message:", err.message);
+      }
+      return;
+    }
+
+    // Case C: General /start Commands (Contact / Membership / Direct Start)
+    if (text.startsWith("/start")) {
+      const isMembership = text.includes("membership");
+      const isContact = text.includes("contact");
+
+      let greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
+
+      if (isMembership) {
+        greetingMessage = "Բարև ձեզ! 🔮\nԴուք ցանկանում եք ձեռք բերել «Մուտքի արտոնագիր»: Գրեք ձեր տվյալները կամ հարցը, և մենք ձեզ կուղարկենք մանրամասները:";
+      } else if (isContact) {
+        greetingMessage = "Բարև ձեզ! 💬\nՇնորհակալություն կապ հաստատելու համար: Գրեք ձեր հարցը, և մեր թիմը շուտով կպատասխանի ձեզ:";
+      }
+
+      await supportJaduBot.sendMessage(msg.chat.id, greetingMessage);
+      return;
+    }
+
+    // Case D: Standard User Message / Question -> Always Forward to Admin Group
     try {
       const forwardedMsg = await supportJaduBot.forwardMessage(
         supportJaduGroupId,
@@ -106,39 +152,12 @@ if (supportJaduToken && supportJaduGroupId) {
       );
 
       supportMessageMap.set(forwardedMsg.message_id, msg.chat.id);
+      console.log(`💬 Support message from ${msg.chat.id} forwarded to group`);
     } catch (err) {
       console.error("❌ Failed to forward support message:", err.message);
     }
   });
 
-  // 2. Admin replies in group -> Send answer back to the user
-  supportJaduBot.on("message", async (msg) => {
-    if (
-      msg.chat.id.toString() !== supportJaduGroupId.toString() ||
-      !msg.reply_to_message
-    ) return;
-
-    const targetUserId =
-      msg.reply_to_message.forward_from?.id ||
-      supportMessageMap.get(msg.reply_to_message.message_id);
-
-    if (targetUserId) {
-      try {
-        await supportJaduBot.sendMessage(targetUserId, msg.text);
-        await supportJaduBot.sendMessage(supportJaduGroupId, "✅ Պատասխանն ուղարկվեց:");
-      } catch (err) {
-        await supportJaduBot.sendMessage(
-          supportJaduGroupId,
-          "❌ Չհաջողվեց ուղարկել (օգտատերը կարող է արգելափակել է բոտը):"
-        );
-      }
-    } else {
-      await supportJaduBot.sendMessage(
-        supportJaduGroupId,
-        "⚠️ Չհաջողվեց գտնել օգտատիրոջ ID-ն:"
-      );
-    }
-  });
 } else {
   console.warn("⚠️ Support Bot credentials (SUPPORT_JADU_BOT_TOKEN / SUPPORT_JADU_GROUP_ID) missing in .env file.");
 }
