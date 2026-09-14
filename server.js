@@ -52,7 +52,7 @@ if (supportJaduToken && supportJaduGroupId) {
 
   const supportMessageMap = new Map();
 
-  // SINGLE UNIFIED MESSAGE HANDLER (Fixes double greetings and message loss)
+  // SINGLE UNIFIED MESSAGE HANDLER
   supportJaduBot.on("message", async (msg) => {
     const incomingChatId = String(msg.chat.id);
     const adminGroupId = String(supportJaduGroupId).trim();
@@ -97,7 +97,7 @@ if (supportJaduToken && supportJaduGroupId) {
     }
 
     // ---------------------------------------------------------------------
-    // 2. USER MESSAGES TO THE SUPPORT BOT (PREVENTS DOUBLE-GREETINGS)
+    // 2. USER MESSAGES TO THE SUPPORT BOT
     // ---------------------------------------------------------------------
     const text = msg.text ? msg.text.trim() : "";
     const decodedText = text ? decodeURIComponent(text) : "";
@@ -111,11 +111,11 @@ if (supportJaduToken && supportJaduGroupId) {
       text.startsWith("/start") && 
       (text.includes("ԱՐԵՎԱԾԱԳ") || text.includes("AREVATSAG") || text.includes("%D4%B1%D5%90%D4%B5%D5%8E%D4%B1%D5%90%D4%B1%D5%A3"));
 
-    // Case A: Deep link from Secret Corner -> Prompt for Password
+    // Case A: Deep link from Secret Corner -> Greeting + Password Prompt
     if (isSecretStart) {
       await supportJaduBot.sendMessage(
         msg.chat.id, 
-        "🔮 <b>Թաքուն Անկյուն</b>\n\nԴուք մուտք եք գործել հատուկ համակարգ: Խնդրում ենք մուտքագրել գաղտնաբառը՝ մուտք ստանալու համար:",
+        "Բարև ձեզ! 🔮\nԲարի գալուստ Jadu-յի համակարգ:\n\nԴուք անցել եք «Թաքուն Անկյուն» էջից: Խնդրում ենք մուտքագրել գաղտնաբառը՝ հատուկ նյութերին մուտք ստանալու համար:",
         { parse_mode: "HTML" }
       );
     } 
@@ -541,7 +541,6 @@ app.get("/reset", async (req, res) => {
     res.status(500).send("ERROR");
   }
 });
-
 
 app.listen(PORT, () => {
   console.log(`🚀 Unified Bot Server running on port ${PORT}`);
