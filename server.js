@@ -108,6 +108,7 @@ if (supportJaduToken && supportJaduGroupId) {
 
     const isStartCommand = rawText.startsWith("/start");
     
+    // Check for secret word typed directly in chat (not part of /start)
     const isSecretWord = 
       !isStartCommand && 
       (rawText === "ԱՐԵՎԱԾԱԳ" || 
@@ -115,32 +116,46 @@ if (supportJaduToken && supportJaduGroupId) {
        decodedText.includes("ԱՐԵՎԱԾԱԳ"));
 
     // ---------------------------------------------------------------------
-    // RULE 1: CLICKING START (ALWAYS RISES A GREETING REPLY)
+    // RULE 1: CLICKING START (4 INDIVIDUAL INSTANCES)
     // ---------------------------------------------------------------------
     if (isStartCommand) {
+      const isContact = rawText.includes("contact");
+      const isMembership = rawText.includes("membership");
+      const isConsultation = rawText.includes("consultation");
       const isSecretStart = 
+        rawText.includes("secretWord") ||
         rawText.includes("ԱՐԵՎԱԾԱԳ") || 
         rawText.includes("AREVATSAG") || 
         rawText.includes("%D4%B1%D5%90%D4%B5%D5%8E%D4%B1%D5%90%D4%B1%D5%A3") ||
         decodedText.includes("ԱՐԵՎԱԾԱԳ");
 
-      const isMembership = rawText.includes("membership");
-      const isContact = rawText.includes("contact");
+      let greetingMessage = "";
 
-      let greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
-
-      if (isSecretStart) {
-        greetingMessage = "Բարև ձեզ! 🔮\nԲարի գալուստ Ջադույի համակարգ:\n\nԴուք անցել եք «Թաքուն Անկյուն» էջից: Խնդրում ենք մուտքագրել գաղտնաբառը՝ հատուկ նյութերին մուտք ստանալու համար:";
-      } else if (isMembership) {
-        greetingMessage = "Բարև ձեզ! 🔮\nԴուք ցանկանում եք ձեռք բերել «Մուտքի արտոնագիր»: Գրեք ձեր տվյալները կամ հարցը, և մենք ձեզ կուղարկենք մանրամասները:";
-      } else if (isContact) {
+      // Instance 1: Contact
+      if (isContact) {
         greetingMessage = "Բարև ձեզ! 💬\nՇնորհակալություն կապ հաստատելու համար: Գրեք ձեր հարցը, և մեր թիմը շուտով կպատասխանի ձեզ:";
+      } 
+      // Instance 2: Membership
+      else if (isMembership) {
+        greetingMessage = "Բարև ձեզ! 🔮\nԴուք ցանկանում եք ձեռք բերել «Մուտքի արտոնագիր»: Գրեք ձեր տվյալները կամ հարցը, և մենք ձեզ կուղարկենք մանրամասները:";
+      } 
+      // Instance 3: Consultation
+      else if (isConsultation) {
+        greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհրդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
+      } 
+      // Instance 4: Secret Word
+      else if (isSecretStart) {
+        greetingMessage = "Բարև ձեզ! 🔮\nԲարի գալուստ Ջադույի համակարգ:\n\nԴուք անցել եք «Թաքուն Անկյուն» էջից: Խնդրում ենք մուտքագրել գաղտնաբառը՝ հատուկ նյութերին մուտք ստանալու համար:";
+      } 
+      // Fallback for standard /start
+      else {
+        greetingMessage = "Բարև ձեզ! ✨\nԲարի գալուստ Jadu Support: Գրեք ձեր հարցը, և մենք շուտով կպատասխանենք ձեզ:";
       }
 
       await supportJaduBot.sendMessage(msg.chat.id, greetingMessage, { parse_mode: "HTML" });
     } 
     // ---------------------------------------------------------------------
-    // RULE 2: TYPING THE SECRET PASSWORD
+    // RULE 2: TYPING THE SECRET PASSWORD MANUALLY IN CHAT
     // ---------------------------------------------------------------------
     else if (isSecretWord) {
       const secretMessage = 
