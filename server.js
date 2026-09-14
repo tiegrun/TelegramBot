@@ -119,8 +119,13 @@ if (supportJaduToken && supportJaduGroupId) {
         { parse_mode: "HTML" }
       );
     } 
-    // Case B: User enters Secret Password -> Grant access & notify group
+    // Case B: User enters Secret Password -> Greeting + Secret Confirmation
     else if (isSecretWord) {
+      // 1. Send initial greeting message first
+      const greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
+      await supportJaduBot.sendMessage(msg.chat.id, greetingMessage);
+
+      // 2. Send secret confirmation
       await supportJaduBot.sendMessage(
         msg.chat.id, 
         "✨ <b>Ճիշտ Գաղտնաբառ:</b>\n\nՇնորհավորում ենք: Դուք հաջողությամբ բացահայտեցիք «Թաքուն Անկյունի» գաղտնիքը:\n\n🔮 Գրեք ձեր հարցը կամ ցանկությունը այստեղ, և մենք կտրամադրենք ձեզ անհատական տեղեկատվությունը:",
