@@ -111,7 +111,7 @@ if (supportJaduToken && supportJaduGroupId) {
       text.startsWith("/start") && 
       (text.includes("ԱՐԵՎԱԾԱԳ") || text.includes("AREVATSAG") || text.includes("%D4%B1%D5%90%D4%B5%D5%8E%D4%B1%D5%90%D4%B1%D5%A3"));
 
-    // Case A: Deep link from Secret Corner -> Greeting + Password Prompt
+    // Case A: Deep link from Secret Corner -> Immediate Bot Greeting asking for Password
     if (isSecretStart) {
       await supportJaduBot.sendMessage(
         msg.chat.id, 
@@ -119,18 +119,14 @@ if (supportJaduToken && supportJaduGroupId) {
         { parse_mode: "HTML" }
       );
     } 
-    // Case B: User enters Secret Password -> Greeting + Secret Confirmation
+    // Case B: User types Secret Password -> Single Clean Confirmation
     else if (isSecretWord) {
-      // 1. Send initial greeting message first
-      const greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
-      await supportJaduBot.sendMessage(msg.chat.id, greetingMessage);
+      const combinedSecretMessage = 
+        "✨ <b>Ճիշտ Գաղտնաբառ:</b>\n\n" +
+        "Շնորհավորում ենք: Դուք հաջողությամբ բացահայտեցիք «Թաքուն Անկյունի» գաղտնիքը:\n\n" +
+        "🔮 Գրեք ձեր հարցը կամ ցանկությունը այստեղ, և մենք կտրամադրենք ձեզ անհատական տեղեկատվությունը:";
 
-      // 2. Send secret confirmation
-      await supportJaduBot.sendMessage(
-        msg.chat.id, 
-        "✨ <b>Ճիշտ Գաղտնաբառ:</b>\n\nՇնորհավորում ենք: Դուք հաջողությամբ բացահայտեցիք «Թաքուն Անկյունի» գաղտնիքը:\n\n🔮 Գրեք ձեր հարցը կամ ցանկությունը այստեղ, և մենք կտրամադրենք ձեզ անհատական տեղեկատվությունը:",
-        { parse_mode: "HTML" }
-      );
+      await supportJaduBot.sendMessage(msg.chat.id, combinedSecretMessage, { parse_mode: "HTML" });
 
       try {
         const forwardedMsg = await supportJaduBot.forwardMessage(
@@ -143,7 +139,7 @@ if (supportJaduToken && supportJaduGroupId) {
         console.error("❌ Failed to forward secret alert to group:", err.message);
       }
     } 
-    // Case C: Standard /start Command (Single Greeting Only)
+    // Case C: Standard /start Command (Direct website buttons or standard start)
     else if (text.startsWith("/start")) {
       const isMembership = text.includes("membership");
       const isContact = text.includes("contact");
