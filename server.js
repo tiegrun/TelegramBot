@@ -44,7 +44,7 @@ if (supportJaduToken && supportJaduGroupId) {
   // Polling error listener to handle temporary 409 conflicts gracefully
   supportJaduBot.on("polling_error", (error) => {
     if (error.code === "ETELEGRAM" && error.message.includes("409 Conflict")) {
-      console.warn("⚠️ Support Bot polling conflict: Another instance is briefly active. Auto-reconnecting...");
+      console.warn("⚠️ Support Bot polling conflict: Another instance is briefly active (e.g., Render zero-downtime deploy). Auto-reconnecting...");
     } else {
       console.error("❌ Support Bot Polling Error:", error.message);
     }
@@ -52,16 +52,16 @@ if (supportJaduToken && supportJaduGroupId) {
 
   const supportMessageMap = new Map();
 
-  // SINGLE UNIFIED MESSAGE HANDLER (Prevents handler conflicts)
+  // SINGLE UNIFIED MESSAGE HANDLER (Fixes double greetings and message loss)
   supportJaduBot.on("message", async (msg) => {
     const incomingChatId = String(msg.chat.id);
-    const adminGroupId = String(supportJaduGroupId);
+    const adminGroupId = String(supportJaduGroupId).trim();
 
     // ---------------------------------------------------------------------
     // 1. ADMIN REPLIES FROM INSIDE THE PRIVATE TELEGRAM GROUP
     // ---------------------------------------------------------------------
     if (incomingChatId === adminGroupId) {
-      if (!msg.reply_to_message) return; // Only trigger on direct replies
+      if (!msg.reply_to_message) return; // Ignore messages in group that are not direct replies
 
       const targetUserId =
         msg.reply_to_message.forward_from?.id ||
@@ -81,7 +81,7 @@ if (supportJaduToken && supportJaduGroupId) {
           }
           await supportJaduBot.sendMessage(adminGroupId, "✅ Պատասխանն ուղարկվեց:");
         } catch (err) {
-          console.error("❌ Admin reply error:", err.message);
+          console.error("❌ Reply to user failed:", err.message);
           await supportJaduBot.sendMessage(
             adminGroupId,
             "❌ Չհաջողվեց ուղարկել (օգտատերը կարող է արգելափակել է բոտը):"
@@ -90,14 +90,14 @@ if (supportJaduToken && supportJaduGroupId) {
       } else {
         await supportJaduBot.sendMessage(
           adminGroupId,
-          "⚠️ Չհաջողվեց գտնել օգտատիրոջ ID-ն (սերվերը կարող է վերագործարկվել է):"
+          "⚠️ Չհաջողվեց գտնել օգտատիրոջ ID-ն: (Կարող է սերվերը վերագործարկվել է):"
         );
       }
       return;
     }
 
     // ---------------------------------------------------------------------
-    // 2. USER MESSAGES TO THE SUPPORT BOT
+    // 2. USER MESSAGES TO THE SUPPORT BOT (PREVENTS DOUBLE-GREETINGS)
     // ---------------------------------------------------------------------
     const text = msg.text ? msg.text.trim() : "";
     const decodedText = text ? decodeURIComponent(text) : "";
@@ -111,40 +111,35 @@ if (supportJaduToken && supportJaduGroupId) {
       text.startsWith("/start") && 
       (text.includes("ԱՐԵՎԱԾԱԳ") || text.includes("AREVATSAG") || text.includes("%D4%B1%D5%90%D4%B5%D5%8E%D4%B1%D5%90%D4%B1%D5%A3"));
 
-    // Case A: User clicked Secret Corner deep link -> Request Password
+    // Case A: Deep link from Secret Corner -> Prompt for Password
     if (isSecretStart) {
       await supportJaduBot.sendMessage(
         msg.chat.id, 
         "🔮 <b>Թաքուն Անկյուն</b>\n\nԴուք մուտք եք գործել հատուկ համակարգ: Խնդրում ենք մուտքագրել գաղտնաբառը՝ մուտք ստանալու համար:",
         { parse_mode: "HTML" }
       );
-      return;
-    }
-
-    // Case B: User typed the correct secret password
-    if (isSecretWord) {
+    } 
+    // Case B: User enters Secret Password -> Grant access & notify group
+    else if (isSecretWord) {
       await supportJaduBot.sendMessage(
         msg.chat.id, 
         "✨ <b>Ճիշտ Գաղտնաբառ:</b>\n\nՇնորհավորում ենք: Դուք հաջողությամբ բացահայտեցիք «Թաքուն Անկյունի» գաղտնիքը:\n\n🔮 Գրեք ձեր հարցը կամ ցանկությունը այստեղ, և մենք կտրամադրենք ձեզ անհատական տեղեկատվությունը:",
         { parse_mode: "HTML" }
       );
 
-      // Forward alert to Admin Group
       try {
         const forwardedMsg = await supportJaduBot.forwardMessage(
-          supportJaduGroupId,
+          adminGroupId,
           msg.chat.id,
           msg.message_id
         );
         supportMessageMap.set(forwardedMsg.message_id, msg.chat.id);
       } catch (err) {
-        console.error("❌ Failed to forward secret alert:", err.message);
+        console.error("❌ Failed to forward secret alert to group:", err.message);
       }
-      return;
-    }
-
-    // Case C: Standard /start parameters
-    if (text.startsWith("/start")) {
+    } 
+    // Case C: Standard /start Command (Single Greeting Only)
+    else if (text.startsWith("/start")) {
       const isMembership = text.includes("membership");
       const isContact = text.includes("contact");
 
@@ -157,21 +152,21 @@ if (supportJaduToken && supportJaduGroupId) {
       }
 
       await supportJaduBot.sendMessage(msg.chat.id, greetingMessage);
-      return;
-    }
+    } 
+    // Case D: ALL User Questions / Text Messages -> Forward directly to Telegram Admin Group
+    else {
+      try {
+        const forwardedMsg = await supportJaduBot.forwardMessage(
+          adminGroupId,
+          msg.chat.id,
+          msg.message_id
+        );
 
-    // Case D: ALL regular messages & questions -> Forward to Admin Group
-    try {
-      const forwardedMsg = await supportJaduBot.forwardMessage(
-        supportJaduGroupId,
-        msg.chat.id,
-        msg.message_id
-      );
-
-      supportMessageMap.set(forwardedMsg.message_id, msg.chat.id);
-      console.log(`💬 Support message from ${msg.chat.id} forwarded to group`);
-    } catch (err) {
-      console.error(`❌ Forwarding failed from user ${msg.chat.id}:`, err.message);
+        supportMessageMap.set(forwardedMsg.message_id, msg.chat.id);
+        console.log(`💬 Message from user ${msg.chat.id} forwarded to admin group ${adminGroupId}`);
+      } catch (err) {
+        console.error(`❌ Forwarding failed from user ${msg.chat.id} to group ${adminGroupId}:`, err.message);
+      }
     }
   });
 
