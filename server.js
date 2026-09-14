@@ -98,22 +98,34 @@ if (supportJaduToken && supportJaduGroupId) {
     // ---------------------------------------------------------------------
     // 2. USER MESSAGES TO THE SUPPORT BOT
     // ---------------------------------------------------------------------
-    const text = msg.text ? msg.text.trim() : "";
-    const decodedText = text ? decodeURIComponent(text) : "";
+    const rawText = msg.text ? msg.text.trim() : "";
+    let decodedText = rawText;
+    try {
+      decodedText = decodeURIComponent(rawText);
+    } catch {
+      decodedText = rawText;
+    }
 
+    const isStartCommand = rawText.startsWith("/start");
+    
     const isSecretWord = 
-      text === "ԱՐԵՎԱԾԱԳ" || 
-      text.toUpperCase() === "AREVATSAG" || 
-      decodedText.includes("ԱՐԵՎԱԾԱԳ");
+      !isStartCommand && 
+      (rawText === "ԱՐԵՎԱԾԱԳ" || 
+       rawText.toUpperCase() === "AREVATSAG" || 
+       decodedText.includes("ԱՐԵՎԱԾԱԳ"));
 
-    const isSecretStart = 
-      text.startsWith("/start") && 
-      (text.includes("ԱՐԵՎԱԾԱԳ") || text.includes("AREVATSAG") || text.includes("%D4%B1%D5%90%D4%B5%D5%8E%D4%B1%D5%90%D4%B1%D5%A3"));
+    // ---------------------------------------------------------------------
+    // RULE 1: CLICKING START (ALWAYS RISES A GREETING REPLY)
+    // ---------------------------------------------------------------------
+    if (isStartCommand) {
+      const isSecretStart = 
+        rawText.includes("ԱՐԵՎԱԾԱԳ") || 
+        rawText.includes("AREVATSAG") || 
+        rawText.includes("%D4%B1%D5%90%D4%B5%D5%8E%D4%B1%D5%90%D4%B1%D5%A3") ||
+        decodedText.includes("ԱՐԵՎԱԾԱԳ");
 
-    // Case A: Deep link or First Click on /start -> Send Greeting Immediately
-    if (text.startsWith("/start")) {
-      const isMembership = text.includes("membership");
-      const isContact = text.includes("contact");
+      const isMembership = rawText.includes("membership");
+      const isContact = rawText.includes("contact");
 
       let greetingMessage = "Բարև ձեզ! ✨\nԳրեք ձեր հարցը կամ տվյալները անհատական խորհդատվություն ստանալու համար, և մենք շուտով կպատասխանենք ձեզ:";
 
@@ -127,7 +139,9 @@ if (supportJaduToken && supportJaduGroupId) {
 
       await supportJaduBot.sendMessage(msg.chat.id, greetingMessage, { parse_mode: "HTML" });
     } 
-    // Case B: User types Secret Password -> Secret Confirmation
+    // ---------------------------------------------------------------------
+    // RULE 2: TYPING THE SECRET PASSWORD
+    // ---------------------------------------------------------------------
     else if (isSecretWord) {
       const secretMessage = 
         "✨ <b>Ճիշտ Գաղտնաբառ:</b>\n\n" +
@@ -147,7 +161,9 @@ if (supportJaduToken && supportJaduGroupId) {
         console.error("❌ Failed to forward secret alert to group:", err.message);
       }
     } 
-    // Case C: ALL User Questions / Text Messages -> Forward to Admin Group
+    // ---------------------------------------------------------------------
+    // RULE 3: REGULAR USER MESSAGES / QUESTIONS (FORWARD TO GROUP)
+    // ---------------------------------------------------------------------
     else {
       try {
         const forwardedMsg = await supportJaduBot.forwardMessage(
